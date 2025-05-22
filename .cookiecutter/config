@@ -1,0 +1,18 @@
+# Change these at your peril:
+export PROJECT_NAME=discovery_mission_radar
+export REPO_NAME=discovery_mission_radar
+export DESCRIPTION=Scanning quarterly signals and trends
+export PROJECT_OPENNESS=public
+export ENVIRONMENT_TYPE=uv
+
+VENV_PATH=.venv
+
+
+# uv configuration
+ENV_CREATE=uv venv ${VENV_PATH}
+ENV_ACTIVATE=source ${VENV_PATH}/bin/activate
+ENV_DEACTIVATE=deactivate
+ENV_REMOVE=rm -rf ${VENV_PATH}
+ENV_UPDATE=uv pip install ".[dev]"
+ENV_INSTALL_EXTRAS=true
+
