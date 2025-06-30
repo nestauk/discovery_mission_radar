@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import List
 
-from discovery_mission_radar.pipeline.runner import SimpleRunner
+from discovery_mission_radar.pipeline.runner import MissionRadarRunner
 from discovery_mission_radar.pipeline.config_manager import get_pipeline_config
 
 def setup_logging(level: str = "INFO"):
@@ -24,7 +24,7 @@ def setup_logging(level: str = "INFO"):
         ]
     )
 
-def run_single_topic(runner: SimpleRunner, topic_name: str, output_dir: Path = None):
+def run_single_topic(runner: MissionRadarRunner, topic_name: str, output_dir: Path = None):
     """Run analysis for a single topic"""
     logger = logging.getLogger(__name__)
     config = get_pipeline_config()
@@ -52,7 +52,7 @@ def run_single_topic(runner: SimpleRunner, topic_name: str, output_dir: Path = N
         logger.error(f"Failed to process topic {topic_name}: {e}")
         raise
 
-def run_batch_analysis(runner: SimpleRunner, topic_list: List[str], output_dir: Path = None):
+def run_batch_analysis(runner: MissionRadarRunner, topic_list: List[str], output_dir: Path = None):
     """Run batch analysis for multiple topics"""
     logger = logging.getLogger(__name__)
     config = get_pipeline_config()
@@ -85,7 +85,7 @@ def run_batch_analysis(runner: SimpleRunner, topic_list: List[str], output_dir: 
         logger.error(f"Failed to process batch analysis: {e}")
         raise
 
-def run_comprehensive_analysis(runner: SimpleRunner, output_dir: Path = None):
+def run_comprehensive_analysis(runner: MissionRadarRunner, output_dir: Path = None):
     """Run comprehensive analysis for current mission"""
     logger = logging.getLogger(__name__)
     config = get_pipeline_config()
@@ -121,7 +121,7 @@ def run_comprehensive_analysis(runner: SimpleRunner, output_dir: Path = None):
         logger.error(f"Failed to process comprehensive analysis: {e}")
         raise
 
-def list_topics(runner: SimpleRunner):
+def list_topics(runner: MissionRadarRunner):
     """List all available topics for the current mission"""
     config = get_pipeline_config()
     topics = runner.list_available_topics()
@@ -152,7 +152,7 @@ def list_topics(runner: SimpleRunner):
     total = len(topics) + len(native_categories)
     print(f"\nTotal: {total} topics")
 
-def list_all_missions(runner: SimpleRunner):
+def list_all_missions(runner: MissionRadarRunner):
     """List all missions and their topics"""
     config = get_pipeline_config()
     missions = config.get_available_missions()
@@ -172,7 +172,7 @@ def list_all_missions(runner: SimpleRunner):
         except Exception as e:
             print(f"  Error listing topics: {e}")
 
-def validate_topic(runner: SimpleRunner, topic_name: str):
+def validate_topic(runner: MissionRadarRunner, topic_name: str):
     """Validate a topic configuration"""
     config = get_pipeline_config()
     errors = runner.validate_topic_config(topic_name)
@@ -222,25 +222,25 @@ def main():
         epilog="""
 Examples:
   # Run single topic
-  python -m discovery_mission_radar.pipeline.cli_new run hydrogen_energy
+  python -m discovery_mission_radar.pipeline.cli run hydrogen_energy
   
   # Run batch analysis (generates consolidated CSV files)
-  python -m discovery_mission_radar.pipeline.cli_new batch hydrogen_energy heat_pumps solar
+  python -m discovery_mission_radar.pipeline.cli batch hydrogen_energy heat_pumps solar
   
   # Run comprehensive analysis (all topics + native categories)
-  python -m discovery_mission_radar.pipeline.cli_new comprehensive
+  python -m discovery_mission_radar.pipeline.cli comprehensive
   
   # List available topics for current mission
-  python -m discovery_mission_radar.pipeline.cli_new list
+  python -m discovery_mission_radar.pipeline.cli list
   
   # List all missions and their topics
-  python -m discovery_mission_radar.pipeline.cli_new missions
+  python -m discovery_mission_radar.pipeline.cli missions
   
   # Show current configuration
-  python -m discovery_mission_radar.pipeline.cli_new config
+  python -m discovery_mission_radar.pipeline.cli config
   
   # Validate topic configuration
-  python -m discovery_mission_radar.pipeline.cli_new validate hydrogen_energy
+  python -m discovery_mission_radar.pipeline.cli validate hydrogen_energy
   
 Mission Configuration:
   The current mission is set in config/pipeline.yaml under 'mission.current_mission'.
@@ -299,7 +299,7 @@ Selective Processing:
     
     # Initialize runner
     try:
-        runner = SimpleRunner(args.config_dir, args.output_dir)
+        runner = MissionRadarRunner(args.config_dir, args.output_dir)
     except Exception as e:
         logger.error(f"Failed to initialize runner: {e}")
         sys.exit(1)

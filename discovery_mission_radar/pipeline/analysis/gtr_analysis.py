@@ -1,5 +1,8 @@
 """
-GTR analysis
+GTR Analysis
+
+Mirrors notebook process exactly: receive topic data → produce charts + csv files.
+Simple, stateless functions for analysis.
 """
 import pandas as pd
 from pathlib import Path
@@ -14,19 +17,18 @@ logger = logging.getLogger(__name__)
 
 def produce_gtr_stats(topic_data: Dict[str, Any], output_dir: Path, gtr_getter=None) -> Dict[str, Any]:
     """
-    Produce GTR stats
+    Process GTR project IDs through analysis functions to produce charts and CSVs.
+    
+    Mirrors the GTR notebook process:
+    Get relevant project IDs → Analysis functions → Charts + CSVs
     
     Args:
-        topic_data: Output from get_gtr_data() containing IDs and config
-        output_dir: Where to save CSVs and charts
+        topic_data: Output from GtrDataSource.get_data() containing IDs and config
+        output_dir: Directory to save charts and CSV files
         gtr_getter: Pre-initialized GtrGetter (optional)
         
     Returns:
-        {
-            'csv_files': List[str],     # Paths to generated CSV files
-            'chart_files': List[str],   # Paths to generated charts
-            'stats': Dict               # Summary statistics
-        }
+        Dictionary with file paths and statistics
     """
     # Get configuration
     config = get_pipeline_config()

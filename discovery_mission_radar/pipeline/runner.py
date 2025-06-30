@@ -10,7 +10,7 @@ import yaml
 
 from discovery_utils.getters import crunchbase as cb_getters, gtr as gtr_getters
 from discovery_utils.synthesis.policy import policy_update
-from discovery_mission_radar.pipeline.data_sources import crunchbase, gtr, hansard
+from discovery_mission_radar.pipeline.data_sources import CrunchbaseDataSource, GtrDataSource, HansardDataSource
 from discovery_mission_radar.pipeline.analysis import crunchbase_analysis, gtr_analysis, hansard_analysis, aggregation, consolidation
 from discovery_mission_radar.pipeline.config_manager import get_pipeline_config
 
@@ -35,7 +35,10 @@ class MissionRadarRunner:
         # Initialise getters once to avoid redownloading parquet files
         self._initialize_getters()
         
-        logger.info(f"Initialized SimpleRunner with config_dir={config_dir}, output_dir={self.output_dir}")
+        # Initialise data sources
+        self._initialize_data_sources()
+        
+        logger.info(f"Initialized MissionRadarRunner with config_dir={config_dir}, output_dir={self.output_dir}")
         logger.info(f"Current mission: {self.pipeline_config.current_mission}")
         logger.info(f"Topics directory: {self.topics_dir}")
     
@@ -45,19 +48,36 @@ class MissionRadarRunner:
         
         self.getters = {}
         
-        if self.pipeline_config['sources']['crunchbase']['enabled']:
+        if self.pipeline_config.is_source_enabled('crunchbase'):
             logger.info("Initialising Crunchbase getter")
             self.getters['crunchbase'] = cb_getters.CrunchbaseGetter()
             
-        if self.pipeline_config['sources']['gtr']['enabled']:
+        if self.pipeline_config.is_source_enabled('gtr'):
             logger.info("Initialising GTR getter")
             self.getters['gtr'] = gtr_getters.GtrGetter()
             
-        if self.pipeline_config['sources']['hansard']['enabled']:
+        if self.pipeline_config.is_source_enabled('hansard'):
             logger.info("Initialising Hansard getter")
             self.getters['hansard'] = policy_update.HansardData()
         
         logger.info("All getters initialized successfully")
+    
+    def _initialize_data_sources(self):
+        """Initialise data source instances"""
+        logger.info("Initialising data sources")
+        
+        self.data_sources = {}
+        
+        if self.pipeline_config.is_source_enabled('crunchbase'):
+            self.data_sources['crunchbase'] = CrunchbaseDataSource()
+            
+        if self.pipeline_config.is_source_enabled('gtr'):
+            self.data_sources['gtr'] = GtrDataSource()
+            
+        if self.pipeline_config.is_source_enabled('hansard'):
+            self.data_sources['hansard'] = HansardDataSource()
+        
+        logger.info("All data sources initialized successfully")
     
     def run_topic_end_to_end(self, topic_name: str) -> Dict[str, Any]:
         """
@@ -79,7 +99,7 @@ class MissionRadarRunner:
         # Data Sources Phase (with caching) - using pre-initialized getters and exclusion logic
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'crunchbase'):
             logger.info("Processing Crunchbase data source")
-            cb_data = crunchbase.get_cb_data(topic_name, self.cache_dir, topic_config, self.getters['crunchbase'])
+            cb_data = self.data_sources['crunchbase'].get_data(topic_name, self.cache_dir, topic_config, self.getters['crunchbase'])
             cb_results = crunchbase_analysis.produce_cb_stats(cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase'])
             results['crunchbase'] = cb_results
         else:
@@ -87,7 +107,7 @@ class MissionRadarRunner:
             
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'gtr'):
             logger.info("Processing GTR data source")
-            gtr_data = gtr.get_gtr_data(topic_name, self.cache_dir, topic_config, self.getters['gtr'])
+            gtr_data = self.data_sources['gtr'].get_data(topic_name, self.cache_dir, topic_config, self.getters['gtr'])
             gtr_results = gtr_analysis.produce_gtr_stats(gtr_data, topic_output_dir / "gtr", self.getters['gtr'])
             results['gtr'] = gtr_results
         else:
@@ -95,7 +115,7 @@ class MissionRadarRunner:
             
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'hansard'):
             logger.info("Processing Hansard data source")
-            hansard_data = hansard.get_hansard_data(topic_name, self.cache_dir, topic_config, self.getters['hansard'], use_llm_check=False)
+            hansard_data = self.data_sources['hansard'].get_data(topic_name, self.cache_dir, topic_config, self.getters['hansard'], use_llm_check=False)
             hansard_results = hansard_analysis.produce_hansard_stats(hansard_data, topic_output_dir / "hansard", self.getters['hansard'])
             results['hansard'] = hansard_results
         else:
@@ -253,7 +273,7 @@ class MissionRadarRunner:
         # Run Crunchbase if selected
         if run_crunchbase:
             logger.info("Processing Crunchbase data source")
-            cb_data = crunchbase.get_cb_data(topic_name, self.cache_dir, topic_config, self.getters['crunchbase'])
+            cb_data = self.data_sources['crunchbase'].get_data(topic_name, self.cache_dir, topic_config, self.getters['crunchbase'])
             cb_analysis = crunchbase_analysis.produce_cb_stats(
                 cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
             )
@@ -262,7 +282,7 @@ class MissionRadarRunner:
         # Run GTR if selected
         if run_gtr:
             logger.info("Processing GTR data source")
-            gtr_data = gtr.get_gtr_data(topic_name, self.cache_dir, topic_config, self.getters['gtr'])
+            gtr_data = self.data_sources['gtr'].get_data(topic_name, self.cache_dir, topic_config, self.getters['gtr'])
             gtr_analysis_result = gtr_analysis.produce_gtr_stats(
                 gtr_data, topic_output_dir / "gtr", self.getters['gtr']
             )
@@ -271,7 +291,7 @@ class MissionRadarRunner:
         # Run Hansard if selected
         if run_hansard:
             logger.info("Processing Hansard data source") 
-            hansard_data = hansard.get_hansard_data(topic_name, self.cache_dir, topic_config, self.getters['hansard'], use_llm_check=False)
+            hansard_data = self.data_sources['hansard'].get_data(topic_name, self.cache_dir, topic_config, self.getters['hansard'], use_llm_check=False)
             hansard_analysis_result = hansard_analysis.produce_hansard_stats(
                 hansard_data, topic_output_dir / "hansard", self.getters['hansard']
             )
@@ -371,19 +391,19 @@ class MissionRadarRunner:
             
             if self.pipeline_config.should_run_source_for_topic(topic_name, 'crunchbase'):
                 try:
-                    crunchbase.validate_cb_config(topic_config)
+                    self.data_sources['crunchbase'].validate_config(topic_config)
                 except ValueError as e:
                     errors.append(f"Crunchbase validation: {e}")
             
             if self.pipeline_config.should_run_source_for_topic(topic_name, 'gtr'):
                 try:
-                    gtr.validate_gtr_config(topic_config)
+                    self.data_sources['gtr'].validate_config(topic_config)
                 except ValueError as e:
                     errors.append(f"GTR validation: {e}")
             
             if self.pipeline_config.should_run_source_for_topic(topic_name, 'hansard'):
                 try:
-                    hansard.validate_hansard_config(topic_config)
+                    self.data_sources['hansard'].validate_config(topic_config)
                 except ValueError as e:
                     errors.append(f"Hansard validation: {e}")
                     

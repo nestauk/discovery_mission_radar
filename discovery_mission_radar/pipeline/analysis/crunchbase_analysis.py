@@ -1,15 +1,20 @@
 """
-Crunchbase analysis - mirrors kk_03_mission_radar_cb.py produce_stats() exactly
+Crunchbase Analysis
+
+Mirrors notebook process exactly: receive topic data → produce charts + csv files.
+Simple, stateless functions for analysis.
 """
+
 import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, List
-from discovery_utils.getters import crunchbase
-from discovery_utils.utils import analysis_crunchbase, analysis, charts
-from discovery_utils.utils.io import remap_dict
 import logging
 import datetime
 from ..config_manager import get_pipeline_config
+
+from discovery_utils.getters import crunchbase as cb
+from discovery_utils.utils import analysis_crunchbase, analysis, charts
+from discovery_utils.utils.io import remap_dict
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +29,18 @@ investment_type_to_stage = remap_dict(investment_stages)
 
 def produce_cb_stats(topic_data: Dict[str, Any], output_dir: Path, cb_getter=None) -> Dict[str, Any]:
     """
-    Exactly mirrors the notebook produce_stats() function.
+    Process Crunchbase company IDs through analysis functions to produce charts and CSVs.
+    
+    Mirrors the crunchbase notebook process:
+    Get relevant company IDs → Analysis functions → Charts + CSVs
     
     Args:
-        topic_data: Output from get_cb_data() containing IDs and config
-        output_dir: Where to save CSVs and charts
+        topic_data: Output from CrunchbaseDataSource.get_data() containing IDs and config
+        output_dir: Directory to save charts and CSV files
         cb_getter: Pre-initialized CrunchbaseGetter (optional)
         
     Returns:
-        {
-            'csv_files': List[str],     # Paths to generated CSV files
-            'chart_files': List[str],   # Paths to generated charts
-            'stats': Dict               # Summary statistics
-        }
+        Dictionary with file paths and statistics
     """
     # Get configuration
     config = get_pipeline_config()
@@ -47,7 +51,7 @@ def produce_cb_stats(topic_data: Dict[str, Any], output_dir: Path, cb_getter=Non
     logger.info(f"Producing Crunchbase stats for {category_name} with {len(matching_ids)} companies")
     
     if cb_getter is None:
-        CB = crunchbase.CrunchbaseGetter()
+        CB = cb.CrunchbaseGetter()
     else:
         CB = cb_getter
     

@@ -55,7 +55,7 @@ data_sources:
         "cloud_kitchen",
         "delivery_apps",
         "fermentation",
-        "food_advertisement",
+        #"food_advertisement",
         "food_tech_general",
         "health_general",
         "insects",
@@ -66,7 +66,7 @@ data_sources:
         "restaurants",
         "retail",
         "supply_chain",
-        "weight_loss_drugs",
+        #"weight_loss_drugs",
         "weight"
       ]
     # Native categories use Crunchbase's native category tags instead of custom topic configs
@@ -96,7 +96,7 @@ data_sources:
         "cloud_kitchen",
         "delivery_apps",
         "fermentation",
-        "food_advertisement",
+        #"food_advertisement",
         "food_tech_general",
         "health_general",
         "insects",
@@ -107,7 +107,7 @@ data_sources:
         "restaurants",
         "retail",
         "supply_chain",
-        "weight_loss_drugs",
+        #"weight_loss_drugs",
         "weight"
       ]
     
@@ -122,7 +122,7 @@ data_sources:
         "cloud_kitchen",
         "delivery_apps",
         "fermentation",
-        "food_advertisement",
+        #"food_advertisement",
         "food_tech_general",
         "health_general",
         "insects",
@@ -133,7 +133,7 @@ data_sources:
         "restaurants",
         "retail",
         "supply_chain",
-        "weight_loss_drugs",
+        #"weight_loss_drugs",
         "weight"
       ]
 

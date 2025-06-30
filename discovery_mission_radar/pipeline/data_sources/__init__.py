@@ -1,16 +1,25 @@
 """
-Simple data sources module for Mission Radar Pipeline.
+Data sources module for Mission Radar Pipeline.
 
-This module provides simple data fetching functions that replace complex
-data preparation classes, mirroring notebook patterns exactly.
+This module provides class-based data sources that replace the original
+function-based approach, offering better code reuse and extensibility
+through an abstract base class pattern.
 """
 
-from .crunchbase import get_cb_data, validate_cb_config
-from .gtr import get_gtr_data, validate_gtr_config  
-from .hansard import get_hansard_data, validate_hansard_config
+from .base import BaseDataSource
+from .utils import run_llm_relevance_check, run_llm_relevance_check_async
+from .crunchbase import CrunchbaseDataSource
+from .gtr import GtrDataSource
+from .hansard import HansardDataSource
 
 __all__ = [
-    'get_cb_data', 'validate_cb_config',
-    'get_gtr_data', 'validate_gtr_config', 
-    'get_hansard_data', 'validate_hansard_config'
+    # Base classes and utilities
+    'BaseDataSource',
+    'run_llm_relevance_check',
+    'run_llm_relevance_check_async',
+    
+    # Concrete data source classes
+    'CrunchbaseDataSource',
+    'GtrDataSource',
+    'HansardDataSource'
 ] 
