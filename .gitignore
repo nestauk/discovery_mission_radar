@@ -98,11 +98,10 @@ target/
 # Jupyter NB Checkpoints
 .ipynb_checkpoints/
 
-# exclude /outputs/data except top-level markdown
-/outputs/data/*
-!/outputs/data/*.md
-/outputs/models/*
-!/outputs/models/*.md
+# outputs
+outputs/
+docs/
+reports/
 
 # Mac OS-specific storage files
 .DS_Store
