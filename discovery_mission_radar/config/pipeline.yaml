@@ -5,7 +5,7 @@
 mission:
   # Specify which mission to process (AHL or ASF)
   # Only topics from this mission's folder will be processed
-  current_mission: "AHL"  # Default to ASF mission
+  current_mission: "ASF"  # Default to ASF mission
   # Available missions: AHL, ASF
 
 # Date range configuration
@@ -45,7 +45,6 @@ data_sources:
         "energy_grid",
         "energy_storage",
         "green_skills",
-        "renewables_general",
         "solar",
         "wind"
         ]
@@ -115,7 +114,10 @@ data_sources:
     enabled: true
     run_llm_check: false  # Use pre-existing topic labels by default
     excluded_topics:
-      ASF: []
+      ASF: [
+        "renewables_general",    
+        "decarbonisation_general",   
+      ]
       AHL: [
         "alt_protein_general",
         "plant_based",
@@ -141,8 +143,14 @@ data_sources:
 output:
   base_dir: "./outputs"
   cache_enabled: true
-  cache_ttl_hours: 24
+  cache_ttl_hours: 48
   
+  # Google Sheets integration
+  google_sheets:
+    enabled: true
+    sheet_id: "1kmHGOcNzBBtO3aZnRsmELic35rD4XetExS0eJASH1fQ"
+    upload_aggregated_data: true
+
 # Execution settings
 execution:
   log_level: "INFO"

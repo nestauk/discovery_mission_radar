@@ -71,6 +71,16 @@ def run_batch_analysis(runner: MissionRadarRunner, topic_list: List[str], output
             for file_name, file_path in results['consolidated_files'].items():
                 print(f"  - {file_name}: {file_path}")
         
+        # Show Google Sheets upload status
+        if config.google_sheets_enabled and config.upload_aggregated_data:
+            print(f"\n📊 Google Sheets Upload:")
+            print(f"  - Sheet ID: {config.google_sheets_id}")
+            print(f"  - Status: Enabled (check logs for upload results)")
+        elif config.google_sheets_enabled:
+            print(f"\n📊 Google Sheets: Enabled but upload_aggregated_data is disabled")
+        else:
+            print(f"\n📊 Google Sheets: Disabled")
+        
         if 'radar_charts' in results:
             print(f"\nCross-topic analysis generated:")
             cross_topic = results['radar_charts']
@@ -106,6 +116,16 @@ def run_comprehensive_analysis(runner: MissionRadarRunner, output_dir: Path = No
             print(f"\nConsolidated CSV files generated:")
             for file_name, file_path in results['consolidated_files'].items():
                 print(f"  - {file_name}: {file_path}")
+        
+        # Show Google Sheets upload status
+        if config.google_sheets_enabled and config.upload_aggregated_data:
+            print(f"\n📊 Google Sheets Upload:")
+            print(f"  - Sheet ID: {config.google_sheets_id}")
+            print(f"  - Status: Enabled (check logs for upload results)")
+        elif config.google_sheets_enabled:
+            print(f"\n📊 Google Sheets: Enabled but upload_aggregated_data is disabled")
+        else:
+            print(f"\n📊 Google Sheets: Disabled")
         
         if 'radar_charts' in results:
             print(f"\nCross-topic analysis generated:")
@@ -196,6 +216,13 @@ def show_config():
     print(f"  Cache enabled: {config.cache_enabled}")
     print(f"  Cache TTL: {config.cache_ttl_hours} hours")
     print(f"  Log level: {config.log_level}")
+    
+    # Show Google Sheets configuration
+    print(f"\nGoogle Sheets Integration:")
+    print(f"  Enabled: {config.google_sheets_enabled}")
+    if config.google_sheets_enabled:
+        print(f"  Sheet ID: {config.google_sheets_id}")
+        print(f"  Upload aggregated data: {config.upload_aggregated_data}")
     
     # Show exclusions for current mission
     current_mission = config.current_mission

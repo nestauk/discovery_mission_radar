@@ -2,18 +2,132 @@
 Shared utilities for data sources in the Mission Radar Pipeline.
 
 This module contains common functionality used across multiple data sources,
-particularly for LLM relevance checking and async processing.
+particularly for LLM relevance checking and async processing with S3 caching.
 """
 
 import asyncio
 import logging
+import os
+import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 from discovery_utils.utils.llm import batch_check
+from discovery_utils.utils.s3 import s3_client, _download_obj, upload_obj
 
 logger = logging.getLogger(__name__)
+
+
+class S3CacheManager:
+    """Manages S3 caching for LLM relevance check results."""
+    
+    def __init__(self, mission: str, bucket_name: Optional[str] = None):
+        """Initialise S3 cache manager.
+        
+        Args:
+            mission: Current mission (AHL/ASF)
+            bucket_name: S3 bucket name (defaults to S3_BUCKET env var)
+        """
+        self.mission = mission
+        self.bucket_name = bucket_name or os.getenv("S3_BUCKET")
+        if not self.bucket_name:
+            logger.warning("S3_BUCKET environment variable not set. S3 caching disabled.")
+            self.enabled = False
+        else:
+            self.enabled = True
+            self.s3 = s3_client()
+    
+    def get_s3_path(self, topic_name: str, source_name: str) -> str:
+        """Generate S3 path for cache file.
+        
+        Args:
+            topic_name: Name of the topic
+            source_name: Name of the data source
+            
+        Returns:
+            S3 path for the cache file
+        """
+        return f"data/mission_radar/llm_relevance_check/{self.mission}/{source_name}/{topic_name}_{source_name}_relevance_check.jsonl"
+    
+    def download_cache_from_s3(self, topic_name: str, source_name: str, local_file: Path) -> bool:
+        """Download cache file from S3 to local path.
+        
+        Args:
+            topic_name: Name of the topic
+            source_name: Name of the data source  
+            local_file: Local file path to save to
+            
+        Returns:
+            True if download successful, False otherwise
+        """
+        if not self.enabled:
+            return False
+            
+        s3_path = self.get_s3_path(topic_name, source_name)
+        
+        try:
+            logger.info(f"Attempting to download cache from S3: {s3_path}")
+            
+            # Use boto3 directly to download the file to avoid file extension limitations
+            response = self.s3.get_object(Bucket=self.bucket_name, Key=s3_path)
+            content = response['Body'].read().decode('utf-8')
+            
+            # Ensure local directory exists
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write to local file
+            with open(local_file, 'w') as f:
+                f.write(content)
+                
+            logger.info(f"Successfully downloaded cache from S3 to {local_file}")
+            return True
+            
+        except Exception as e:
+            logger.info(f"Could not download cache from S3: {e}")
+            return False
+    
+    async def upload_cache_to_s3_async(self, topic_name: str, source_name: str, local_file: Path) -> bool:
+        """Upload cache file from local path to S3 asynchronously.
+        
+        Args:
+            topic_name: Name of the topic
+            source_name: Name of the data source
+            local_file: Local file path to upload from
+            
+        Returns:
+            True if upload successful, False otherwise
+        """
+        if not self.enabled or not local_file.exists():
+            return False
+            
+        s3_path = self.get_s3_path(topic_name, source_name)
+        
+        try:
+            logger.debug(f"Uploading cache to S3: {s3_path}")
+            
+            # Read file content as bytes
+            with open(local_file, 'rb') as f:
+                content = f.read()
+            
+            # Upload asynchronously using boto3 directly to avoid file extension limitations
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self.s3.put_object(
+                    Bucket=self.bucket_name,
+                    Key=s3_path,
+                    Body=content,
+                    ContentType='application/x-ndjson'  # Proper MIME type for JSONL
+                )
+            )
+            
+            logger.debug(f"Successfully uploaded cache to S3: {s3_path}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Could not upload cache to S3: {e}")
+            return False
 
 
 async def run_llm_relevance_check_async(
@@ -22,15 +136,17 @@ async def run_llm_relevance_check_async(
     cache_dir: Path, 
     topic_name: str,
     source_name: str,
+    mission: str,
     id_column: str = 'id',
     text_column: str = 'text',
     custom_instructions: str = ""
 ) -> List[str]:
-    """Run async LLM relevance check with caching.
+    """Run async LLM relevance check with S3 and local caching.
     
     This function provides a common interface for LLM relevance checking
     across all data sources with intelligent caching to avoid re-processing
-    items that have already been checked.
+    items that have already been checked. Uses S3 for persistent storage
+    with local fallback.
     
     Args:
         items_df: DataFrame containing items to check (must have id_column)
@@ -38,6 +154,7 @@ async def run_llm_relevance_check_async(
         cache_dir: Directory for caching results
         topic_name: Name of the topic being processed
         source_name: Name of the data source (for cache file naming)
+        mission: Current mission (AHL/ASF)
         id_column: Name of the ID column in items_df
         text_column: Name of the text column in items_df  
         custom_instructions: Additional instructions for the LLM
@@ -45,8 +162,20 @@ async def run_llm_relevance_check_async(
     Returns:
         List of IDs that were marked as relevant
     """
-    # Check for existing relevance cache
+    # Initialise S3 cache manager
+    s3_cache = S3CacheManager(mission)
+    
+    # Local cache file path
     relevance_cache_file = cache_dir / f"{topic_name}_{source_name}_relevance_check.jsonl"
+    
+    # Try to download from S3 first, then fall back to local cache
+    s3_downloaded = s3_cache.download_cache_from_s3(topic_name, source_name, relevance_cache_file)
+    if s3_downloaded:
+        logger.info(f"Downloaded {source_name} cache from S3 for {topic_name}")
+    elif relevance_cache_file.exists():
+        logger.info(f"Using local {source_name} cache for {topic_name}")
+    else:
+        logger.info(f"No existing {source_name} cache found for {topic_name}")
     
     # Get all current item IDs that need to be checked
     current_item_ids = set(items_df[id_column].tolist())
@@ -102,7 +231,9 @@ async def run_llm_relevance_check_async(
         cache_dir.mkdir(parents=True, exist_ok=True)
         
         try:
-            await _llm_processing(processor, check_data, relevance_cache_file)
+            await _llm_processing_with_s3_upload(
+                processor, check_data, relevance_cache_file, s3_cache, topic_name, source_name
+            )
         except Exception as e:
             logger.error(f"All LLM processing attempts failed: {e}")
             raise
@@ -137,6 +268,7 @@ def run_llm_relevance_check(
     cache_dir: Path, 
     topic_name: str,
     source_name: str,
+    mission: str,
     id_column: str = 'id',
     text_column: str = 'text',
     custom_instructions: str = ""
@@ -149,6 +281,7 @@ def run_llm_relevance_check(
         cache_dir: Directory for caching results
         topic_name: Name of the topic being processed
         source_name: Name of the data source
+        mission: Current mission (AHL/ASF)
         id_column: Name of the ID column in items_df
         text_column: Name of the text column in items_df
         custom_instructions: Additional instructions for the LLM
@@ -157,32 +290,177 @@ def run_llm_relevance_check(
         List of IDs that were marked as relevant
     """
     return asyncio.run(run_llm_relevance_check_async(
-        items_df, config, cache_dir, topic_name, source_name, 
+        items_df, config, cache_dir, topic_name, source_name, mission,
         id_column, text_column, custom_instructions
     ))
 
 
-async def _llm_processing(processor, check_data: Dict, output_file: Path) -> None:
-    """Process data through LLM with retry logic.
+async def _llm_processing_with_s3_upload(
+    processor, 
+    check_data: Dict, 
+    output_file: Path, 
+    s3_cache: S3CacheManager,
+    topic_name: str,
+    source_name: str
+) -> None:
+    """Process data through LLM with adaptive batching strategy and S3 uploads.
+    
+    Uses two-stage batching for large datasets (>100 items) to prevent getting stuck,
+    and discovery-utils native batching for smaller datasets for simplicity.
     
     Args:
         processor: LLMProcessor instance
         check_data: Dictionary of {id: text} to process
         output_file: Path to output file
+        s3_cache: S3 cache manager instance
+        topic_name: Name of the topic
+        source_name: Name of the data source
     """
     max_retries = 3
+    data_size = len(check_data)
+    use_two_stage = data_size > 100  # Use two-stage batching for larger datasets
     
     for attempt in range(max_retries):
         try:
-            logger.info(f"LLM processing attempt {attempt + 1}/{max_retries}")
-            await processor.process_text_data(check_data, batch_size=10, sleep_time=0.5)
+            logger.info(f"LLM processing attempt {attempt + 1}/{max_retries} ({data_size} items, {'two-stage' if use_two_stage else 'native'} batching)")
+            
+            if use_two_stage:
+                # Two-stage batching: we control the outer batching, discovery-utils handles inner batching
+                await _process_with_two_stage_batching(
+                    processor, check_data, output_file, s3_cache, topic_name, source_name
+                )
+            else:
+                # Native batching: let discovery-utils handle everything with periodic S3 uploads
+                await _process_with_native_batching(
+                    processor, check_data, output_file, s3_cache, topic_name, source_name
+                )
+            
             logger.info("LLM processing completed successfully")
             return
+            
         except Exception as e:
-            logger.warning(f"LLM processing attempt {attempt + 1} failed: {e}")
+            logger.warning(f"LLM processing attempt {attempt + 1}/{max_retries} failed: {e}")
             if attempt == max_retries - 1:
                 logger.error("All LLM processing attempts failed")
                 raise
             else:
-                logger.info(f"Retrying LLM processing (attempt {attempt + 2}/{max_retries})")
-                await asyncio.sleep(5)  # Wait 5 seconds before retry 
+                # Exponential backoff: 2^attempt seconds (minimum 10s)
+                wait_time = max(10, 2 ** attempt)
+                logger.info(f"Retrying LLM processing (attempt {attempt + 2}/{max_retries}) after {wait_time}s")
+                await asyncio.sleep(wait_time)
+
+
+async def _process_with_native_batching(
+    processor,
+    check_data: Dict,
+    output_file: Path,
+    s3_cache: S3CacheManager,
+    topic_name: str,
+    source_name: str
+) -> None:
+    """Process small datasets using discovery-utils native batching with periodic S3 uploads."""
+    # Start periodic S3 upload task in background
+    upload_task = asyncio.create_task(
+        _periodic_s3_upload(s3_cache, topic_name, source_name, output_file)
+    )
+    
+    try:
+        # Let discovery-utils handle all batching internally
+        await processor.process_text_data(check_data)
+        
+    finally:
+        # Cancel periodic uploads and do final upload
+        upload_task.cancel()
+        try:
+            await upload_task
+        except asyncio.CancelledError:
+            pass
+        
+        # Final upload to S3 after completion
+        await s3_cache.upload_cache_to_s3_async(topic_name, source_name, output_file)
+
+
+async def _process_with_two_stage_batching(
+    processor,
+    check_data: Dict,
+    output_file: Path,
+    s3_cache: S3CacheManager,
+    topic_name: str,
+    source_name: str
+) -> None:
+    """Process large datasets using two-stage batching for better control and progress visibility."""
+    outer_batch_size = 50  # Our outer batch size
+    max_inner_retries = 3  # Retries per outer batch
+    
+    # Convert check_data to list of items for outer batch processing
+    items = list(check_data.items())
+    total_items = len(items)
+    
+    logger.info(f"Processing {total_items} items in outer batches of {outer_batch_size}")
+    
+    for i in range(0, total_items, outer_batch_size):
+        outer_batch_items = items[i:i + outer_batch_size]
+        outer_batch_data = dict(outer_batch_items)
+        outer_batch_num = (i // outer_batch_size) + 1
+        total_outer_batches = (total_items + outer_batch_size - 1) // outer_batch_size
+        
+        logger.info(f"Processing outer batch {outer_batch_num}/{total_outer_batches} ({len(outer_batch_items)} items)")
+        
+        # Retry logic per outer batch
+        for inner_attempt in range(max_inner_retries):
+            try:
+                # Process this outer batch with discovery-utils (which will create its own inner batches)
+                await processor.process_text_data(outer_batch_data)
+                logger.debug(f"Outer batch {outer_batch_num} completed successfully")
+                break  # Success, move to next outer batch
+                
+            except Exception as e:
+                logger.warning(f"Outer batch {outer_batch_num} attempt {inner_attempt + 1}/{max_inner_retries} failed: {e}")
+                if inner_attempt == max_inner_retries - 1:
+                    logger.error(f"Outer batch {outer_batch_num} failed after {max_inner_retries} attempts")
+                    raise
+                else:
+                    # Exponential backoff for inner retries: 2^attempt seconds
+                    wait_time = 2 ** inner_attempt
+                    logger.info(f"Retrying outer batch {outer_batch_num} (attempt {inner_attempt + 2}/{max_inner_retries}) after {wait_time}s")
+                    await asyncio.sleep(wait_time)
+        
+        # Upload progress to S3 after each successful outer batch
+        if output_file.exists():
+            upload_success = await s3_cache.upload_cache_to_s3_async(topic_name, source_name, output_file)
+            if upload_success:
+                logger.debug(f"Uploaded outer batch {outer_batch_num} progress to S3")
+        
+        # Sleep between outer batches (except for the last one)
+        if i + outer_batch_size < total_items:
+            await asyncio.sleep(0.5)
+
+
+async def _periodic_s3_upload(
+    s3_cache: S3CacheManager,
+    topic_name: str,
+    source_name: str,
+    output_file: Path,
+    upload_interval: int = 30
+) -> None:
+    """Periodically upload progress to S3 while processing is running.
+    
+    Args:
+        s3_cache: S3 cache manager instance
+        topic_name: Name of the topic
+        source_name: Name of the data source
+        output_file: Path to output file
+        upload_interval: Upload interval in seconds
+    """
+    try:
+        while True:
+            await asyncio.sleep(upload_interval)
+            
+            if output_file.exists():
+                success = await s3_cache.upload_cache_to_s3_async(topic_name, source_name, output_file)
+                if success:
+                    logger.debug(f"Periodic S3 upload completed for {source_name} {topic_name}")
+                    
+    except asyncio.CancelledError:
+        # Task was cancelled, which is expected when processing completes
+        logger.debug("Periodic S3 upload task cancelled") 

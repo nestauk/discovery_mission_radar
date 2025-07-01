@@ -83,49 +83,92 @@ class MissionRadarRunner:
         """
         Process single topic through complete pipeline.
         Follows Mission Radar process: Data Sources → Analysis → Charts
+        
+        Handles topics with Crunchbase native categories by:
+        - Using native category for Crunchbase if available and not excluded
+        - Using config-based processing for GTR/Hansard if topic config exists and not excluded
         """
         logger.info(f"Processing topic: {topic_name} (Mission: {self.pipeline_config.current_mission})")
         
-        # Check if this is a Crunchbase native category
-        if self.pipeline_config.is_crunchbase_native_category(topic_name):
-            return self._run_crunchbase_native_category(topic_name)
+        # Try to load topic config first (needed for GTR/Hansard even if Crunchbase uses native category)
+        topic_config = None
+        has_config = False
+        try:
+            topic_config = self._load_topic_config(topic_name)
+            has_config = True
+        except ValueError:
+            # No config file exists - check if it's a pure native category
+            if not self.pipeline_config.is_crunchbase_native_category(topic_name):
+                # Neither config nor native category - invalid topic
+                raise ValueError(f"Topic {topic_name} has no config file and is not a native category")
+            # Pure native category - only Crunchbase processing possible
+            has_config = False
         
-        topic_config = self._load_topic_config(topic_name)
         topic_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}" / topic_name
         topic_output_dir.mkdir(parents=True, exist_ok=True)
         
         results = {'topic_name': topic_name, 'mission': self.pipeline_config.current_mission}
         
-        # Data Sources Phase (with caching) - using pre-initialized getters and exclusion logic
+        # Data Sources Phase - handle each source appropriately
+        
+        # Crunchbase: Use native category if available, otherwise config-based
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'crunchbase'):
-            logger.info("Processing Crunchbase data source")
-            cb_data = self.data_sources['crunchbase'].get_data(topic_name, self.cache_dir, topic_config, self.getters['crunchbase'])
-            cb_results = crunchbase_analysis.produce_cb_stats(cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase'])
-            results['crunchbase'] = cb_results
+            if self.pipeline_config.is_crunchbase_native_category(topic_name):
+                logger.info("Processing Crunchbase native category")
+                cb_results = self._process_crunchbase_native_category(topic_name, topic_output_dir)
+                results['crunchbase'] = cb_results
+            elif has_config:
+                logger.info("Processing Crunchbase data source")
+                cb_data = self.data_sources['crunchbase'].get_data(
+                    topic_name, self.cache_dir, topic_config, self.getters['crunchbase'], 
+                    mission=self.pipeline_config.current_mission
+                )
+                cb_results = crunchbase_analysis.produce_cb_stats(cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase'])
+                results['crunchbase'] = cb_results
+            else:
+                logger.info("Skipping Crunchbase data source (no config available)")
         else:
             logger.info("Skipping Crunchbase data source (excluded or disabled)")
             
+        # GTR: Always use config-based processing if config exists
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'gtr'):
-            logger.info("Processing GTR data source")
-            gtr_data = self.data_sources['gtr'].get_data(topic_name, self.cache_dir, topic_config, self.getters['gtr'])
-            gtr_results = gtr_analysis.produce_gtr_stats(gtr_data, topic_output_dir / "gtr", self.getters['gtr'])
-            results['gtr'] = gtr_results
+            if has_config:
+                logger.info("Processing GTR data source")
+                gtr_data = self.data_sources['gtr'].get_data(
+                    topic_name, self.cache_dir, topic_config, self.getters['gtr'],
+                    mission=self.pipeline_config.current_mission
+                )
+                gtr_results = gtr_analysis.produce_gtr_stats(gtr_data, topic_output_dir / "gtr", self.getters['gtr'])
+                results['gtr'] = gtr_results
+            else:
+                logger.info("Skipping GTR data source (no config available)")
         else:
             logger.info("Skipping GTR data source (excluded or disabled)")
             
+        # Hansard: Always use config-based processing if config exists  
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'hansard'):
-            logger.info("Processing Hansard data source")
-            hansard_data = self.data_sources['hansard'].get_data(topic_name, self.cache_dir, topic_config, self.getters['hansard'], use_llm_check=False)
-            hansard_results = hansard_analysis.produce_hansard_stats(hansard_data, topic_output_dir / "hansard", self.getters['hansard'])
-            results['hansard'] = hansard_results
+            if has_config:
+                logger.info("Processing Hansard data source")
+                hansard_data = self.data_sources['hansard'].get_data(
+                    topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
+                    use_llm_check=False, mission=self.pipeline_config.current_mission
+                )
+                hansard_results = hansard_analysis.produce_hansard_stats(hansard_data, topic_output_dir / "hansard", self.getters['hansard'])
+                results['hansard'] = hansard_results
+            else:
+                logger.info("Skipping Hansard data source (no config available)")
         else:
             logger.info("Skipping Hansard data source (excluded or disabled)")
+        
+        # Add config to results if available
+        if has_config:
+            results['config'] = topic_config
         
         logger.info(f"Completed processing: {topic_name}")
         return results
     
-    def _run_crunchbase_native_category(self, topic_name: str) -> Dict[str, Any]:
-        """Process a topic using Crunchbase native categories"""
+    def _process_crunchbase_native_category(self, topic_name: str, topic_output_dir: Path) -> Dict[str, Any]:
+        """Process Crunchbase using native categories"""
         cb_category = self.pipeline_config.get_crunchbase_category_for_topic(topic_name)
         logger.info(f"Processing Crunchbase native category: {topic_name} -> {cb_category}")
         
@@ -150,20 +193,9 @@ class MissionRadarRunner:
             'relevant_count': len(company_ids)  # No LLM filtering for native categories
         }
         
-        topic_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}" / topic_name
-        topic_output_dir.mkdir(parents=True, exist_ok=True)
-        
-        cb_analysis = crunchbase_analysis.produce_cb_stats(
+        return crunchbase_analysis.produce_cb_stats(
             cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
         )
-        
-        return {
-            'topic_name': topic_name,
-            'mission': self.pipeline_config.current_mission,
-            'config': mock_config,
-            'crunchbase': cb_analysis,
-            'native_category': True
-        }
     
     def run_batch_analysis(self, topics: List[str]) -> Dict[str, Any]:
         """Run analysis on multiple topics and consolidate results"""
@@ -261,41 +293,76 @@ class MissionRadarRunner:
         """Run topic analysis with selective data sources"""
         logger.info(f"Processing {topic_name}: CB={run_crunchbase}, GTR={run_gtr}, Hansard={run_hansard}")
         
-        # Check if this is a Crunchbase native category
-        if self.pipeline_config.is_crunchbase_native_category(topic_name) and run_crunchbase:
-            return self._run_crunchbase_native_category(topic_name)
+        # Try to load topic config first (needed for GTR/Hansard even if Crunchbase uses native category)
+        topic_config = None
+        has_config = False
+        try:
+            topic_config = self._load_topic_config(topic_name)
+            has_config = True
+        except ValueError:
+            # No config file exists - check if it's a pure native category
+            if not self.pipeline_config.is_crunchbase_native_category(topic_name):
+                # Neither config nor native category - invalid topic
+                raise ValueError(f"Topic {topic_name} has no config file and is not a native category")
+            # Pure native category - only Crunchbase processing possible
+            has_config = False
         
-        topic_config = self._load_topic_config(topic_name)
         topic_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}" / topic_name
         topic_output_dir.mkdir(parents=True, exist_ok=True)
-        result = {'topic_name': topic_name, 'mission': self.pipeline_config.current_mission, 'config': topic_config}
+        result = {'topic_name': topic_name, 'mission': self.pipeline_config.current_mission}
+        
+        # Add config to results if available
+        if has_config:
+            result['config'] = topic_config
         
         # Run Crunchbase if selected
         if run_crunchbase:
-            logger.info("Processing Crunchbase data source")
-            cb_data = self.data_sources['crunchbase'].get_data(topic_name, self.cache_dir, topic_config, self.getters['crunchbase'])
-            cb_analysis = crunchbase_analysis.produce_cb_stats(
-                cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
-            )
-            result['crunchbase'] = cb_analysis
+            if self.pipeline_config.is_crunchbase_native_category(topic_name):
+                logger.info("Processing Crunchbase native category")
+                cb_results = self._process_crunchbase_native_category(topic_name, topic_output_dir)
+                result['crunchbase'] = cb_results
+            elif has_config:
+                logger.info("Processing Crunchbase data source")
+                cb_data = self.data_sources['crunchbase'].get_data(
+                    topic_name, self.cache_dir, topic_config, self.getters['crunchbase'],
+                    mission=self.pipeline_config.current_mission
+                )
+                cb_analysis = crunchbase_analysis.produce_cb_stats(
+                    cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
+                )
+                result['crunchbase'] = cb_analysis
+            else:
+                logger.info("Skipping Crunchbase data source (no config available)")
         
         # Run GTR if selected
         if run_gtr:
-            logger.info("Processing GTR data source")
-            gtr_data = self.data_sources['gtr'].get_data(topic_name, self.cache_dir, topic_config, self.getters['gtr'])
-            gtr_analysis_result = gtr_analysis.produce_gtr_stats(
-                gtr_data, topic_output_dir / "gtr", self.getters['gtr']
-            )
-            result['gtr'] = gtr_analysis_result
+            if has_config:
+                logger.info("Processing GTR data source")
+                gtr_data = self.data_sources['gtr'].get_data(
+                    topic_name, self.cache_dir, topic_config, self.getters['gtr'],
+                    mission=self.pipeline_config.current_mission
+                )
+                gtr_analysis_result = gtr_analysis.produce_gtr_stats(
+                    gtr_data, topic_output_dir / "gtr", self.getters['gtr']
+                )
+                result['gtr'] = gtr_analysis_result
+            else:
+                logger.info("Skipping GTR data source (no config available)")
         
         # Run Hansard if selected
         if run_hansard:
-            logger.info("Processing Hansard data source") 
-            hansard_data = self.data_sources['hansard'].get_data(topic_name, self.cache_dir, topic_config, self.getters['hansard'], use_llm_check=False)
-            hansard_analysis_result = hansard_analysis.produce_hansard_stats(
-                hansard_data, topic_output_dir / "hansard", self.getters['hansard']
-            )
-            result['hansard'] = hansard_analysis_result
+            if has_config:
+                logger.info("Processing Hansard data source") 
+                hansard_data = self.data_sources['hansard'].get_data(
+                    topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
+                    use_llm_check=False, mission=self.pipeline_config.current_mission
+                )
+                hansard_analysis_result = hansard_analysis.produce_hansard_stats(
+                    hansard_data, topic_output_dir / "hansard", self.getters['hansard']
+                )
+                result['hansard'] = hansard_analysis_result
+            else:
+                logger.info("Skipping Hansard data source (no config available)")
         
         return result
 
@@ -414,10 +481,6 @@ class MissionRadarRunner:
     
     def _load_topic_config(self, topic_name: str) -> Dict[str, Any]:
         """Load topic configuration with basic validation from mission-specific directory"""
-        # Skip loading for native categories
-        if self.pipeline_config.is_crunchbase_native_category(topic_name):
-            raise ValueError(f"Topic {topic_name} is a native category, no config file needed")
-        
         config_file = self.topics_dir / f"config_{topic_name}.yaml"
         if not config_file.exists():
             raise ValueError(f"Topic config not found: {config_file} (Mission: {self.pipeline_config.current_mission})")

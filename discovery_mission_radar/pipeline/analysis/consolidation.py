@@ -1,10 +1,13 @@
 """
-Consolidation module for generating final consolidated CSV files
+Consolidation module for generating final consolidated CSV files and uploading to Google Sheets
 """
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any
 import logging
+
+from discovery_utils.utils import google
+from discovery_mission_radar.pipeline.config_manager import get_pipeline_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,79 +33,45 @@ def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path
     
     hansard_stats, hansard_stats_quarterly, hansard_speeches = _consolidate_hansard_data(topic_results)
     
-    if not cb_stats.empty:
-        cb_stats_path = output_dir / "crunchbase_stats.csv"
-        cb_stats.to_csv(cb_stats_path, index=False)
-        consolidated_files['crunchbase_stats'] = str(cb_stats_path)
-        logger.info(f"Saved crunchbase_stats.csv with {len(cb_stats)} rows")
+    # Define data to save with their corresponding filenames
+    data_to_save = [
+        (cb_stats, "crunchbase_stats.csv"),
+        (cb_stats_quarterly, "crunchbase_stats_quarterly.csv"),
+        (cb_companies, "crunchbase_companies.csv"),
+        (cb_funding, "crunchbase_funding.csv"),
+        (cb_ipos, "crunchbase_ipos.csv"),
+        (cb_acquisitions, "crunchbase_acquisitions.csv"),
+        (ukri_stats, "ukri_stats.csv"),
+        (ukri_stats_quarterly, "ukri_stats_quarterly.csv"),
+        (ukri_projects, "ukri_projects.csv"),
+        (hansard_stats, "hansard_stats.csv"),
+        (hansard_stats_quarterly, "hansard_stats_quarterly.csv"),
+        (hansard_speeches, "hansard_speeches.csv")
+    ]
     
-    if not cb_stats_quarterly.empty:
-        cb_stats_quarterly_path = output_dir / "crunchbase_stats_quarterly.csv"
-        cb_stats_quarterly.to_csv(cb_stats_quarterly_path, index=False)
-        consolidated_files['crunchbase_stats_quarterly'] = str(cb_stats_quarterly_path)
-        logger.info(f"Saved crunchbase_stats_quarterly.csv with {len(cb_stats_quarterly)} rows")
-    
-    if not cb_companies.empty:
-        cb_companies_path = output_dir / "crunchbase_companies.csv"
-        cb_companies.to_csv(cb_companies_path, index=False)
-        consolidated_files['crunchbase_companies'] = str(cb_companies_path)
-        logger.info(f"Saved crunchbase_companies.csv with {len(cb_companies)} rows")
-    
-    if not cb_funding.empty:
-        cb_funding_path = output_dir / "crunchbase_funding.csv"
-        cb_funding.to_csv(cb_funding_path, index=False)
-        consolidated_files['crunchbase_funding'] = str(cb_funding_path)
-        logger.info(f"Saved crunchbase_funding.csv with {len(cb_funding)} rows")
-    
-    if not cb_ipos.empty:
-        cb_ipos_path = output_dir / "crunchbase_ipos.csv"
-        cb_ipos.to_csv(cb_ipos_path, index=False)
-        consolidated_files['crunchbase_ipos'] = str(cb_ipos_path)
-        logger.info(f"Saved crunchbase_ipos.csv with {len(cb_ipos)} rows")
-    
-    if not cb_acquisitions.empty:
-        cb_acquisitions_path = output_dir / "crunchbase_acquisitions.csv"
-        cb_acquisitions.to_csv(cb_acquisitions_path, index=False)
-        consolidated_files['crunchbase_acquisitions'] = str(cb_acquisitions_path)
-        logger.info(f"Saved crunchbase_acquisitions.csv with {len(cb_acquisitions)} rows")
-    
-    if not ukri_stats.empty:
-        ukri_stats_path = output_dir / "ukri_stats.csv"
-        ukri_stats.to_csv(ukri_stats_path, index=False)
-        consolidated_files['ukri_stats'] = str(ukri_stats_path)
-        logger.info(f"Saved ukri_stats.csv with {len(ukri_stats)} rows")
-    
-    if not ukri_stats_quarterly.empty:
-        ukri_stats_quarterly_path = output_dir / "ukri_stats_quarterly.csv"
-        ukri_stats_quarterly.to_csv(ukri_stats_quarterly_path, index=False)
-        consolidated_files['ukri_stats_quarterly'] = str(ukri_stats_quarterly_path)
-        logger.info(f"Saved ukri_stats_quarterly.csv with {len(ukri_stats_quarterly)} rows")
-    
-    if not ukri_projects.empty:
-        ukri_projects_path = output_dir / "ukri_projects.csv"
-        ukri_projects.to_csv(ukri_projects_path, index=False)
-        consolidated_files['ukri_projects'] = str(ukri_projects_path)
-        logger.info(f"Saved ukri_projects.csv with {len(ukri_projects)} rows")
-    
-    if not hansard_stats.empty:
-        hansard_stats_path = output_dir / "hansard_stats.csv"
-        hansard_stats.to_csv(hansard_stats_path, index=False)
-        consolidated_files['hansard_stats'] = str(hansard_stats_path)
-        logger.info(f"Saved hansard_stats.csv with {len(hansard_stats)} rows")
-    
-    if not hansard_stats_quarterly.empty:
-        hansard_stats_quarterly_path = output_dir / "hansard_stats_quarterly.csv"
-        hansard_stats_quarterly.to_csv(hansard_stats_quarterly_path, index=False)
-        consolidated_files['hansard_stats_quarterly'] = str(hansard_stats_quarterly_path)
-        logger.info(f"Saved hansard_stats_quarterly.csv with {len(hansard_stats_quarterly)} rows")
-    
-    if not hansard_speeches.empty:
-        hansard_speeches_path = output_dir / "hansard_speeches.csv"
-        hansard_speeches.to_csv(hansard_speeches_path, index=False)
-        consolidated_files['hansard_speeches'] = str(hansard_speeches_path)
-        logger.info(f"Saved hansard_speeches.csv with {len(hansard_speeches)} rows")
-    
+    # Save each non-empty dataframe
+    for df, filename in data_to_save:
+        if not df.empty:
+            file_path = output_dir / filename
+            df.to_csv(file_path, index=False)
+            consolidated_files[filename.replace('.csv', '')] = str(file_path)
+            logger.info(f"Saved {filename} with {len(df)} rows")
     logger.info(f"Consolidation complete. Generated {len(consolidated_files)} files")
+    
+    # Upload to Google Sheets if enabled
+    config = get_pipeline_config()
+    if config.google_sheets_enabled and config.upload_aggregated_data and config.google_sheets_id:
+        try:
+            _upload_to_google_sheets(
+                cb_stats, cb_stats_quarterly, cb_companies, cb_funding, cb_ipos, cb_acquisitions,
+                ukri_stats, ukri_stats_quarterly, ukri_projects,
+                hansard_stats, hansard_stats_quarterly, hansard_speeches,
+                config.google_sheets_id
+            )
+        except Exception as e:
+            logger.error(f"Failed to upload to Google Sheets: {e}")
+            # Don't fail the entire consolidation if Google Sheets upload fails
+    
     return consolidated_files
 
 def _consolidate_crunchbase_data(topic_results: List[Dict[str, Any]]) -> tuple:
@@ -246,4 +215,50 @@ def _consolidate_hansard_data(topic_results: List[Dict[str, Any]]) -> tuple:
         pd.concat(all_stats, ignore_index=True) if all_stats else pd.DataFrame(),
         pd.concat(all_stats_quarterly, ignore_index=True) if all_stats_quarterly else pd.DataFrame(),
         pd.concat(all_speeches, ignore_index=True) if all_speeches else pd.DataFrame()
-    ) 
+    )
+
+def _upload_to_google_sheets(
+    cb_stats: pd.DataFrame, cb_stats_quarterly: pd.DataFrame, cb_companies: pd.DataFrame,
+    cb_funding: pd.DataFrame, cb_ipos: pd.DataFrame, cb_acquisitions: pd.DataFrame,
+    ukri_stats: pd.DataFrame, ukri_stats_quarterly: pd.DataFrame, ukri_projects: pd.DataFrame,
+    hansard_stats: pd.DataFrame, hansard_stats_quarterly: pd.DataFrame, hansard_speeches: pd.DataFrame,
+    sheet_id: str
+) -> None:
+    """Upload consolidated DataFrames to Google Sheets.
+    
+    Args:
+        Various DataFrames containing consolidated data
+        sheet_id: Google Sheets ID to upload to
+    """
+    logger.info(f"Uploading consolidated data to Google Sheets: {sheet_id}")
+    
+    # Prepare dataframes for upload (only non-empty ones)
+    dataframes = {}
+    
+    # Define mapping of dataframe names to their variables
+    dataframe_mapping = {
+        'crunchbase_stats': cb_stats,
+        'crunchbase_stats_quarterly': cb_stats_quarterly,
+        #'crunchbase_companies': cb_companies, # TODO: bug - sheet upload stalls, upload manually
+        'crunchbase_funding': cb_funding,
+        'crunchbase_ipos': cb_ipos,
+        'crunchbase_acquisitions': cb_acquisitions,
+        'ukri_stats': ukri_stats,
+        'ukri_stats_quarterly': ukri_stats_quarterly,
+        'ukri_projects': ukri_projects,
+        'hansard_stats': hansard_stats,
+        'hansard_stats_quarterly': hansard_stats_quarterly,
+        'hansard_speeches': hansard_speeches
+    }
+    
+    # Add non-empty dataframes to the dataframes dict
+    dataframes.update({
+        name: df for name, df in dataframe_mapping.items() 
+        if not df.empty
+    })
+    if dataframes:
+        # Upload to Google Sheets
+        google.upload_data_to_gsheet(sheet_id, dataframes)
+        logger.info(f"Successfully uploaded {len(dataframes)} sheets to Google Sheets")
+    else:
+        logger.warning("No data to upload to Google Sheets") 

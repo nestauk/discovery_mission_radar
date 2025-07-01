@@ -98,6 +98,9 @@ target/
 # Jupyter NB Checkpoints
 .ipynb_checkpoints/
 
+# temp
+tmp/
+
 # outputs
 outputs/
 docs/

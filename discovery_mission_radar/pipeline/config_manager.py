@@ -103,7 +103,12 @@ class PipelineConfig:
             'output': {
                 'base_dir': './outputs',
                 'cache_enabled': True,
-                'cache_ttl_hours': 24
+                'cache_ttl_hours': 24,
+                'google_sheets': {
+                    'enabled': False,
+                    'sheet_id': '',
+                    'upload_aggregated_data': False
+                }
             },
             'execution': {
                 'log_level': 'INFO',
@@ -250,6 +255,22 @@ class PipelineConfig:
     def cache_ttl_hours(self) -> int:
         """Cache TTL in hours"""
         return self._config['output']['cache_ttl_hours']
+    
+    # Google Sheets properties
+    @property
+    def google_sheets_enabled(self) -> bool:
+        """Whether Google Sheets integration is enabled"""
+        return self._config['output'].get('google_sheets', {}).get('enabled', False)
+    
+    @property
+    def google_sheets_id(self) -> str:
+        """Google Sheets ID for uploading aggregated data"""
+        return self._config['output'].get('google_sheets', {}).get('sheet_id', '')
+    
+    @property
+    def upload_aggregated_data(self) -> bool:
+        """Whether to upload aggregated data to Google Sheets"""
+        return self._config['output'].get('google_sheets', {}).get('upload_aggregated_data', False)
     
     # Execution properties
     @property
