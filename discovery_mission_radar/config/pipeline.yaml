@@ -3,9 +3,9 @@
 
 # Mission configuration
 mission:
-  # Specify which mission to process (AHL or ASF)
+  # Specify which mission to process
   # Only topics from this mission's folder will be processed
-  current_mission: "ASF"  # Default to ASF mission
+  current_mission: "AHL"  # Default to ASF mission
   # Available missions: AHL, ASF
 
 # Date range configuration
@@ -139,6 +139,26 @@ data_sources:
         "weight"
       ]
 
+# Categories for cross-topic radar charts
+categories_to_show:
+  ASF:
+    - "heat_pumps"
+    - "biomass_heating" 
+    - "district_heating"
+    - "wind"
+    - "solar"
+    - "hydrogen_energy"
+    - "energy_efficiency"
+    - "ccus"
+  AHL:
+    - "reformulation_fiber"
+    - "reformulation_salt"
+    - "reformulation_fat"
+    - "reformulation_general"
+    - "reformulation_sugar"
+    - "food_advertisement"
+    - "weight_loss_drugs"
+
 # Output settings  
 output:
   base_dir: "./outputs"
@@ -148,7 +168,7 @@ output:
   # Google Sheets integration
   google_sheets:
     enabled: true
-    sheet_id: "1kmHGOcNzBBtO3aZnRsmELic35rD4XetExS0eJASH1fQ"
+    sheet_id: "1ARoqHV2sRrADMiImPsD-yxOabkWfvRiP8--aXeG7tyo"
     upload_aggregated_data: true
 
 # Execution settings

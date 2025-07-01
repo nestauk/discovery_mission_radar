@@ -29,13 +29,10 @@ class MissionRadarRunner:
         
         self.pipeline_config = get_pipeline_config()
         
-        # Get mission-specific topics directory
         self.topics_dir = self.pipeline_config.get_topics_directory(self.config_dir)
         
-        # Initialise getters once to avoid redownloading parquet files
         self._initialize_getters()
         
-        # Initialise data sources
         self._initialize_data_sources()
         
         logger.info(f"Initialized MissionRadarRunner with config_dir={config_dir}, output_dir={self.output_dir}")
@@ -109,9 +106,7 @@ class MissionRadarRunner:
         
         results = {'topic_name': topic_name, 'mission': self.pipeline_config.current_mission}
         
-        # Data Sources Phase - handle each source appropriately
-        
-        # Crunchbase: Use native category if available, otherwise config-based
+        # Data Sources Phase
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'crunchbase'):
             if self.pipeline_config.is_crunchbase_native_category(topic_name):
                 logger.info("Processing Crunchbase native category")
@@ -130,7 +125,6 @@ class MissionRadarRunner:
         else:
             logger.info("Skipping Crunchbase data source (excluded or disabled)")
             
-        # GTR: Always use config-based processing if config exists
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'gtr'):
             if has_config:
                 logger.info("Processing GTR data source")
@@ -145,7 +139,6 @@ class MissionRadarRunner:
         else:
             logger.info("Skipping GTR data source (excluded or disabled)")
             
-        # Hansard: Always use config-based processing if config exists  
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'hansard'):
             if has_config:
                 logger.info("Processing Hansard data source")
@@ -160,7 +153,6 @@ class MissionRadarRunner:
         else:
             logger.info("Skipping Hansard data source (excluded or disabled)")
         
-        # Add config to results if available
         if has_config:
             results['config'] = topic_config
         
@@ -172,7 +164,6 @@ class MissionRadarRunner:
         cb_category = self.pipeline_config.get_crunchbase_category_for_topic(topic_name)
         logger.info(f"Processing Crunchbase native category: {topic_name} -> {cb_category}")
         
-        # Create a mock config for native categories
         mock_config = {
             'search_recipe': {
                 'category_name': topic_name,
@@ -190,7 +181,7 @@ class MissionRadarRunner:
             'topic_name': topic_name,
             'config': mock_config,
             'companies_count': len(company_ids),
-            'relevant_count': len(company_ids)  # No LLM filtering for native categories
+            'relevant_count': len(company_ids)
         }
         
         return crunchbase_analysis.produce_cb_stats(
@@ -248,7 +239,6 @@ class MissionRadarRunner:
         
         topic_results = []
         
-        # Process all topics with selective data source processing
         for topic in all_topics:
             logger.info(f"Processing topic: {topic}")
             try:
@@ -282,6 +272,134 @@ class MissionRadarRunner:
             }
         }
 
+    def run_radar_charts_only(self) -> Dict[str, Any]:
+        """
+        Generate cross-topic radar charts from existing topic analysis results.
+        
+        This method reconstructs topic results from existing CSV files in the output directory
+        and generates cross-topic comparison charts without re-running the individual analyses.
+        """
+        logger.info(f"Generating radar charts from existing results for mission: {self.pipeline_config.current_mission}")
+        
+        mission_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}"
+        if not mission_output_dir.exists():
+            raise ValueError(f"No existing results found for mission {self.pipeline_config.current_mission} in {mission_output_dir}")
+        
+        topic_results = self._reconstruct_topic_results(mission_output_dir)
+        
+        if not topic_results:
+            raise ValueError(f"No valid topic results found in {mission_output_dir}. Run comprehensive or batch analysis first.")
+        
+        logger.info(f"Found results for {len(topic_results)} topics")
+        
+        # Generate cross-topic radar charts
+        radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir)
+        
+        logger.info(f"Radar charts generation completed for mission: {self.pipeline_config.current_mission}!")
+        return {
+            'mission': self.pipeline_config.current_mission,
+            'radar_charts': radar_charts,
+            'topics_processed': len(topic_results)
+        }
+
+    def _reconstruct_topic_results(self, mission_output_dir: Path) -> List[Dict[str, Any]]:
+        """
+        Reconstruct topic results from existing CSV files for radar chart generation.
+        
+        This method looks for CSV files in the topic directories and creates the data structures
+        needed by the aggregation functions.
+        """
+        topic_results = []
+        
+        for topic_dir in mission_output_dir.iterdir():
+            if not topic_dir.is_dir() or topic_dir.name in ['cross_topic_aggregated_data.csv']:
+                continue
+                
+            topic_name = topic_dir.name
+            logger.info(f"Reconstructing results for topic: {topic_name}")
+            
+            topic_result = {
+                'topic_name': topic_name,
+                'mission': self.pipeline_config.current_mission
+            }
+            
+            cb_csv_dir = topic_dir / "crunchbase" / "csv"
+            if cb_csv_dir.exists():
+                cb_result = self._reconstruct_crunchbase_results(cb_csv_dir, topic_name)
+                if cb_result:
+                    topic_result['crunchbase'] = cb_result
+            
+            gtr_csv_dir = topic_dir / "gtr" / "csv"
+            if gtr_csv_dir.exists():
+                gtr_result = self._reconstruct_gtr_results(gtr_csv_dir, topic_name)
+                if gtr_result:
+                    topic_result['gtr'] = gtr_result
+            
+            hansard_csv_dir = topic_dir / "hansard" / "csv"
+            if hansard_csv_dir.exists():
+                hansard_result = self._reconstruct_hansard_results(hansard_csv_dir, topic_name)
+                if hansard_result:
+                    topic_result['hansard'] = hansard_result
+            
+            # Only add topics that have at least one data source
+            if len(topic_result) > 2:  # More than just topic_name and mission
+                topic_results.append(topic_result)
+            else:
+                logger.warning(f"No valid data sources found for topic: {topic_name}")
+        
+        return topic_results
+
+    def _reconstruct_crunchbase_results(self, csv_dir: Path, topic_name: str) -> Dict[str, Any]:
+        """Reconstruct Crunchbase results from CSV files"""
+        csv_files = []
+        
+        ts_startup_file = csv_dir / f"{topic_name}_ts_startup_yearly.csv"
+        if ts_startup_file.exists():
+            csv_files.append(str(ts_startup_file))
+        
+        for pattern in ["*ts_startup_yearly.csv", "*ts_yearly.csv"]:
+            for file_path in csv_dir.glob(pattern):
+                if str(file_path) not in csv_files:
+                    csv_files.append(str(file_path))
+        
+        if csv_files:
+            return {'csv_files': csv_files}
+        return None
+
+    def _reconstruct_gtr_results(self, csv_dir: Path, topic_name: str) -> Dict[str, Any]:
+        """Reconstruct GTR results from CSV files"""
+        csv_files = []
+        
+        ts_yearly_file = csv_dir / f"{topic_name}_ts_yearly.csv"
+        if ts_yearly_file.exists():
+            csv_files.append(str(ts_yearly_file))
+        
+        for pattern in ["*ts_yearly.csv"]:
+            for file_path in csv_dir.glob(pattern):
+                if str(file_path) not in csv_files:
+                    csv_files.append(str(file_path))
+        
+        if csv_files:
+            return {'csv_files': csv_files}
+        return None
+
+    def _reconstruct_hansard_results(self, csv_dir: Path, topic_name: str) -> Dict[str, Any]:
+        """Reconstruct Hansard results from CSV files"""
+        csv_files = []
+        
+        ts_quarterly_file = csv_dir / f"{topic_name}_ts_quarterly.csv"
+        if ts_quarterly_file.exists():
+            csv_files.append(str(ts_quarterly_file))
+        
+        for pattern in ["*ts_quarterly.csv"]:
+            for file_path in csv_dir.glob(pattern):
+                if str(file_path) not in csv_files:
+                    csv_files.append(str(file_path))
+        
+        if csv_files:
+            return {'csv_files': csv_files}
+        return None
+
     def run_prototype_analysis(self) -> Dict[str, Any]:
         """
         Legacy method - now delegates to comprehensive analysis
@@ -293,7 +411,6 @@ class MissionRadarRunner:
         """Run topic analysis with selective data sources"""
         logger.info(f"Processing {topic_name}: CB={run_crunchbase}, GTR={run_gtr}, Hansard={run_hansard}")
         
-        # Try to load topic config first (needed for GTR/Hansard even if Crunchbase uses native category)
         topic_config = None
         has_config = False
         try:
@@ -311,7 +428,6 @@ class MissionRadarRunner:
         topic_output_dir.mkdir(parents=True, exist_ok=True)
         result = {'topic_name': topic_name, 'mission': self.pipeline_config.current_mission}
         
-        # Add config to results if available
         if has_config:
             result['config'] = topic_config
         

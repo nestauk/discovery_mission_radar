@@ -56,7 +56,6 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
         """Get or create enrichment data"""
         enrichment_cache_file = cache_dir / "gtr_labelled_projects.csv"
         
-        # Check if we have cached enrichment data
         if enrichment_cache_file.exists():
             self.logger.info("Loading cached GTR enrichment data")
             try:
@@ -69,7 +68,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
             except Exception as e:
                 self.logger.warning(f"Could not load cached enrichment data: {e}. Will regenerate.")
         
-        self.logger.info("Generating GTR enrichment data using discovery_utils.utils.keywords (this may take 5-6 minutes)")
+        self.logger.info("Enriching GTR data")
         pipeline_config = get_pipeline_config()
         start_date = pipeline_config.data_start_date
         end_date = pipeline_config.data_end_date
@@ -184,7 +183,6 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
             """
             
         else:
-            # Generic instructions for unknown missions
             return """
             Mark the text as 'yes' if (one or more of the following):
             - If the topic/area defined by the scope above is the main focus
@@ -198,5 +196,3 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
             - If the topic is mentioned only in passing or as a minor example
             - The topic is mentioned only as a negative example
             """
-    
-    # validate_config method removed - using base class implementation 

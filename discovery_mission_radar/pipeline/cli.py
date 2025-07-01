@@ -34,10 +34,8 @@ def run_single_topic(runner: MissionRadarRunner, topic_name: str, output_dir: Pa
         results = runner.run_topic_end_to_end(topic_name)
         logger.info(f"Successfully completed analysis for {topic_name}")
         
-        # Print summary
         print(f"\n=== Analysis Complete for {topic_name} (Mission: {config.current_mission}) ===")
         
-        # Check if it's a native category
         if results.get('native_category'):
             print(f"Processed as Crunchbase native category")
         
@@ -62,7 +60,6 @@ def run_batch_analysis(runner: MissionRadarRunner, topic_list: List[str], output
         results = runner.run_batch_analysis(topic_list)
         logger.info("Successfully completed batch analysis")
         
-        # Print summary
         print(f"\n=== Batch Analysis Complete (Mission: {config.current_mission}) ===")
         print(f"Processed {len(topic_list)} topics")
         
@@ -71,15 +68,14 @@ def run_batch_analysis(runner: MissionRadarRunner, topic_list: List[str], output
             for file_name, file_path in results['consolidated_files'].items():
                 print(f"  - {file_name}: {file_path}")
         
-        # Show Google Sheets upload status
         if config.google_sheets_enabled and config.upload_aggregated_data:
-            print(f"\n📊 Google Sheets Upload:")
+            print(f"\nGoogle Sheets Upload:")
             print(f"  - Sheet ID: {config.google_sheets_id}")
-            print(f"  - Status: Enabled (check logs for upload results)")
+            print(f"  - Status: Enabled")
         elif config.google_sheets_enabled:
-            print(f"\n📊 Google Sheets: Enabled but upload_aggregated_data is disabled")
+            print(f"\nGoogle Sheets: Enabled but upload_aggregated_data is disabled")
         else:
-            print(f"\n📊 Google Sheets: Disabled")
+            print(f"\nGoogle Sheets: Disabled")
         
         if 'radar_charts' in results:
             print(f"\nCross-topic analysis generated:")
@@ -105,7 +101,6 @@ def run_comprehensive_analysis(runner: MissionRadarRunner, output_dir: Path = No
         results = runner.run_comprehensive_analysis()
         logger.info("Successfully completed comprehensive analysis")
         
-        # Print summary
         print(f"\n=== Comprehensive Analysis Complete (Mission: {config.current_mission}) ===")
         stats = results.get('stats', {})
         print(f"Config-based topics: {stats.get('config_topics', 0)}")
@@ -119,13 +114,13 @@ def run_comprehensive_analysis(runner: MissionRadarRunner, output_dir: Path = No
         
         # Show Google Sheets upload status
         if config.google_sheets_enabled and config.upload_aggregated_data:
-            print(f"\n📊 Google Sheets Upload:")
+            print(f"\nGoogle Sheets Upload:")
             print(f"  - Sheet ID: {config.google_sheets_id}")
-            print(f"  - Status: Enabled (check logs for upload results)")
+            print(f"  - Status: Enabled")
         elif config.google_sheets_enabled:
-            print(f"\n📊 Google Sheets: Enabled but upload_aggregated_data is disabled")
+            print(f"\nGoogle Sheets: Enabled but upload_aggregated_data is disabled")
         else:
-            print(f"\n📊 Google Sheets: Disabled")
+            print(f"\nGoogle Sheets: Disabled")
         
         if 'radar_charts' in results:
             print(f"\nCross-topic analysis generated:")
@@ -139,6 +134,35 @@ def run_comprehensive_analysis(runner: MissionRadarRunner, output_dir: Path = No
         
     except Exception as e:
         logger.error(f"Failed to process comprehensive analysis: {e}")
+        raise
+
+def run_radar_charts_only(runner: MissionRadarRunner, output_dir: Path = None):
+    """Generate cross-topic radar charts from existing analysis results"""
+    logger = logging.getLogger(__name__)
+    config = get_pipeline_config()
+    logger.info(f"Generating radar charts for mission: {config.current_mission}")
+    
+    try:
+        results = runner.run_radar_charts_only()
+        logger.info("Successfully completed radar charts generation")
+        
+        print(f"\n=== Radar Charts Generation Complete (Mission: {config.current_mission}) ===")
+        print(f"Topics processed: {results.get('topics_processed', 0)}")
+        
+        if 'radar_charts' in results:
+            cross_topic = results['radar_charts']
+            if 'comparison_charts' in cross_topic:
+                print(f"\nCross-topic charts generated:")
+                for chart_file in cross_topic['comparison_charts']:
+                    print(f"  - {chart_file}")
+                print(f"\nTotal charts: {len(cross_topic['comparison_charts'])}")
+            if 'aggregated_csv' in cross_topic:
+                print(f"Aggregated data: {cross_topic['aggregated_csv']}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Failed to generate radar charts: {e}")
         raise
 
 def list_topics(runner: MissionRadarRunner):
@@ -257,6 +281,9 @@ Examples:
   # Run comprehensive analysis (all topics + native categories)
   python -m discovery_mission_radar.pipeline.cli comprehensive
   
+  # Generate cross-topic radar charts from existing results
+  python -m discovery_mission_radar.pipeline.cli radar_charts_only
+  
   # List available topics for current mission
   python -m discovery_mission_radar.pipeline.cli list
   
@@ -282,7 +309,7 @@ Selective Processing:
     
     parser.add_argument(
         'command',
-        choices=['run', 'batch', 'comprehensive', 'list', 'missions', 'validate', 'config'],
+        choices=['run', 'batch', 'comprehensive', 'radar_charts_only', 'list', 'missions', 'validate', 'config'],
         help='Command to execute'
     )
     
@@ -324,7 +351,7 @@ Selective Processing:
         logger.error(f"Configuration directory not found: {args.config_dir}")
         sys.exit(1)
     
-    # Initialize runner
+    # Initialise runner
     try:
         runner = MissionRadarRunner(args.config_dir, args.output_dir)
     except Exception as e:
@@ -344,6 +371,9 @@ Selective Processing:
             
         elif args.command == 'comprehensive':
             run_comprehensive_analysis(runner, args.output_dir)
+            
+        elif args.command == 'radar_charts_only':
+            run_radar_charts_only(runner, args.output_dir)
             
         elif args.command == 'validate':
             if not args.topics:

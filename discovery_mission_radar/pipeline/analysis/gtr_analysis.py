@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 from discovery_utils.getters import gtr
 from discovery_utils.utils import analysis_gtr, analysis, charts
+import altair as alt
 import logging
 import datetime
 from ..config_manager import get_pipeline_config
@@ -117,53 +118,60 @@ def _generate_charts(data: Dict[str, pd.DataFrame], output_dir: Path, category_n
     chart_files = []
     scale_factor = 2
     
-    if not data['ts_df'].empty:
-        fig = charts.ts_bar(
-            data['ts_df'],
-            variable='n_projects',
-            variable_title="Number of projects",
-            category_column="_category",
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Number of projects for {category_name}")
-        chart_file = output_dir / f"gtr_{category_name}_n_projects.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-        
-        fig = charts.ts_bar(
-            data['ts_df'],
-            variable='amount',
-            variable_title="Amount, £ millions",
-            category_column="_category",
-        )
-        fig = charts.configure_plots(fig, chart_title="")
-        chart_file = output_dir / f"gtr_{category_name}_amount.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+    current_theme = alt.themes.active
+    alt.themes.enable('default')
     
-    if not data['ts_quarterly_df'].empty:
-        fig = charts.ts_bar(
-            data['ts_quarterly_df'],
-            variable='n_projects',
-            variable_title="Number of projects",
-            category_column="_category",
-            time_column="quarter"
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Number of projects for {category_name}")
-        chart_file = output_dir / f"gtr_{category_name}_quarterly_n_projects.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+    try:
+        if not data['ts_df'].empty:
+            fig = charts.ts_bar(
+                data['ts_df'],
+                variable='n_projects',
+                variable_title="Number of projects",
+                category_column="_category",
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Number of projects for {category_name}")
+            chart_file = output_dir / f"gtr_{category_name}_n_projects.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+            
+            fig = charts.ts_bar(
+                data['ts_df'],
+                variable='amount',
+                variable_title="Amount, £ millions",
+                category_column="_category",
+            )
+            fig = charts.configure_plots(fig, chart_title="")
+            chart_file = output_dir / f"gtr_{category_name}_amount.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
         
-        fig = charts.ts_bar(
-            data['ts_quarterly_df'],
-            variable='amount',
-            variable_title="Amount, £ millions",
-            category_column="_category",
-            time_column="quarter"
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Amount for {category_name}")
-        chart_file = output_dir / f"gtr_{category_name}_quarterly_amount.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+        if not data['ts_quarterly_df'].empty:
+            fig = charts.ts_bar(
+                data['ts_quarterly_df'],
+                variable='n_projects',
+                variable_title="Number of projects",
+                category_column="_category",
+                time_column="quarter"
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Number of projects for {category_name}")
+            chart_file = output_dir / f"gtr_{category_name}_quarterly_n_projects.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+            
+            fig = charts.ts_bar(
+                data['ts_quarterly_df'],
+                variable='amount',
+                variable_title="Amount, £ millions",
+                category_column="_category",
+                time_column="quarter"
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Amount for {category_name}")
+            chart_file = output_dir / f"gtr_{category_name}_quarterly_amount.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+    
+    finally:
+        alt.themes.enable(current_theme)
     
     logger.info(f"Generated {len(chart_files)} GTR charts for {category_name}")
     return chart_files

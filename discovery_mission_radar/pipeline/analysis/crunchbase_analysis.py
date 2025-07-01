@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 import logging
 import datetime
+import altair as alt
 from ..config_manager import get_pipeline_config
 
 from discovery_utils.getters import crunchbase as cb
@@ -198,119 +199,128 @@ def _generate_charts(data: Dict[str, pd.DataFrame], output_dir: Path, category_n
     chart_files = []
     scale_factor = 2
     
-    if not data['ts_df'].empty:
-        fig = charts.ts_bar(
-            data['ts_df'],
-            variable='raised_amount_gbp_total',
-            variable_title="Raised amount, £ millions",
-            category_column="_category"
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name}")
-        chart_file = output_dir / f"{category_name}_raised_amount.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+    # Temporarily disable the nestafont theme to ensure text visibility
+    current_theme = alt.themes.active
+    alt.themes.enable('default')
+    
+    try:
+        if not data['ts_df'].empty:
+            fig = charts.ts_bar(
+                data['ts_df'],
+                variable='raised_amount_gbp_total',
+                variable_title="Raised amount, £ millions",
+                category_column="_category"
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name}")
+            chart_file = output_dir / f"{category_name}_raised_amount.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+            
+            fig = charts.ts_bar(
+                data['ts_df'],
+                variable='n_rounds',
+                variable_title="Number of funding rounds",
+                category_column="_category"
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Number of funding rounds for {category_name}")
+            chart_file = output_dir / f"{category_name}_n_rounds.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
         
-        fig = charts.ts_bar(
-            data['ts_df'],
-            variable='n_rounds',
-            variable_title="Number of funding rounds",
-            category_column="_category"
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Number of funding rounds for {category_name}")
-        chart_file = output_dir / f"{category_name}_n_rounds.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-    
-    if not data['ts_quarterly_df'].empty:
-        fig = charts.ts_bar(
-            data['ts_quarterly_df'],
-            variable='raised_amount_gbp_total',
-            variable_title="Raised amount, £ millions",
-            category_column="_category",
-            time_column="quarter"
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name}")
-        chart_file = output_dir / f"{category_name}_raised_amount_quarterly.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-    
-    if not data['ts_startup_df'].empty:
-        fig = charts.ts_bar(
-            data['ts_startup_df'],
-            variable='raised_amount_gbp_total',
-            variable_title="Raised amount, £ millions",
-            category_column="_category"
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name} (early and growth stage)")
-        chart_file = output_dir / f"{category_name}_raised_amount_startup.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-    
-    if not data['ts_quarterly_startup_df'].empty:
-        fig = charts.ts_bar(
-            data['ts_quarterly_startup_df'],
-            variable='raised_amount_gbp_total',
-            variable_title="Raised amount, £ millions",
-            category_column="_category",
-            time_column="quarter"
-        )
-        fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name} (early and growth stage)")
-        chart_file = output_dir / f"{category_name}_raised_amount_quarterly_startup.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-    
-    # Investment breakdown charts
-    if not data['aggregated_funding_types_df'].empty:
-        fig = chart_investment_types(data['aggregated_funding_types_df'], time_period_col="year")
-        fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name}")
-        chart_file = output_dir / f"{category_name}_investment_types.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+        if not data['ts_quarterly_df'].empty:
+            fig = charts.ts_bar(
+                data['ts_quarterly_df'],
+                variable='raised_amount_gbp_total',
+                variable_title="Raised amount, £ millions",
+                category_column="_category",
+                time_column="quarter"
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name}")
+            chart_file = output_dir / f"{category_name}_raised_amount_quarterly.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
         
-        fig = chart_investment_types_counts(data['aggregated_funding_types_df'], time_period_col="year")
-        fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name}")
-        chart_file = output_dir / f"{category_name}_investment_types_counts.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-    
-    if not data['aggregated_funding_types_quarterly_df'].empty:
-        fig = chart_investment_types(data['aggregated_funding_types_quarterly_df'], time_period_col="quarter")
-        fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name}")
-        chart_file = output_dir / f"{category_name}_quarterly_investment_types.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+        if not data['ts_startup_df'].empty:
+            fig = charts.ts_bar(
+                data['ts_startup_df'],
+                variable='raised_amount_gbp_total',
+                variable_title="Raised amount, £ millions",
+                category_column="_category"
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name} (early and growth stage)")
+            chart_file = output_dir / f"{category_name}_raised_amount_startup.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
         
-        fig = chart_investment_types_counts(data['aggregated_funding_types_quarterly_df'], time_period_col="quarter")
-        fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name}")
-        chart_file = output_dir / f"{category_name}_quarterly_investment_types_counts.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-    
-    if not data['aggregated_funding_types_startup_df'].empty:
-        fig = chart_investment_types(data['aggregated_funding_types_startup_df'])
-        fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name} (startup stage)")
-        chart_file = output_dir / f"{category_name}_investment_types_startup.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+        if not data['ts_quarterly_startup_df'].empty:
+            fig = charts.ts_bar(
+                data['ts_quarterly_startup_df'],
+                variable='raised_amount_gbp_total',
+                variable_title="Raised amount, £ millions",
+                category_column="_category",
+                time_column="quarter"
+            )
+            fig = charts.configure_plots(fig, chart_title=f"Funding raised over time for {category_name} (early and growth stage)")
+            chart_file = output_dir / f"{category_name}_raised_amount_quarterly_startup.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
         
-        fig = chart_investment_types_counts(data['aggregated_funding_types_startup_df'])
-        fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name} (startup stage)")
-        chart_file = output_dir / f"{category_name}_investment_types_startup_counts.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
-    
-    if not data['aggregated_funding_types_quarterly_startup_df'].empty:
-        fig = chart_investment_types(data['aggregated_funding_types_quarterly_startup_df'], time_period_col="quarter")
-        fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name} (startup stage)")
-        chart_file = output_dir / f"{category_name}_quarterly_investment_types_startup.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+        # Investment breakdown charts
+        if not data['aggregated_funding_types_df'].empty:
+            fig = chart_investment_types(data['aggregated_funding_types_df'], time_period_col="year")
+            fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name}")
+            chart_file = output_dir / f"{category_name}_investment_types.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+            
+            fig = chart_investment_types_counts(data['aggregated_funding_types_df'], time_period_col="year")
+            fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name}")
+            chart_file = output_dir / f"{category_name}_investment_types_counts.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
         
-        fig = chart_investment_types_counts(data['aggregated_funding_types_quarterly_startup_df'], time_period_col="quarter")
-        fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name} (startup stage)")
-        chart_file = output_dir / f"{category_name}_quarterly_investment_types_startup_counts.png"
-        fig.save(str(chart_file), scale_factor=scale_factor)
-        chart_files.append(str(chart_file))
+        if not data['aggregated_funding_types_quarterly_df'].empty:
+            fig = chart_investment_types(data['aggregated_funding_types_quarterly_df'], time_period_col="quarter")
+            fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name}")
+            chart_file = output_dir / f"{category_name}_quarterly_investment_types.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+            
+            fig = chart_investment_types_counts(data['aggregated_funding_types_quarterly_df'], time_period_col="quarter")
+            fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name}")
+            chart_file = output_dir / f"{category_name}_quarterly_investment_types_counts.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+        
+        if not data['aggregated_funding_types_startup_df'].empty:
+            fig = chart_investment_types(data['aggregated_funding_types_startup_df'])
+            fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name} (startup stage)")
+            chart_file = output_dir / f"{category_name}_investment_types_startup.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+            
+            fig = chart_investment_types_counts(data['aggregated_funding_types_startup_df'])
+            fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name} (startup stage)")
+            chart_file = output_dir / f"{category_name}_investment_types_startup_counts.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+        
+        if not data['aggregated_funding_types_quarterly_startup_df'].empty:
+            fig = chart_investment_types(data['aggregated_funding_types_quarterly_startup_df'], time_period_col="quarter")
+            fig = charts.configure_plots(fig, chart_title=f"Breakdown of investment types for {category_name} (startup stage)")
+            chart_file = output_dir / f"{category_name}_quarterly_investment_types_startup.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+            
+            fig = chart_investment_types_counts(data['aggregated_funding_types_quarterly_startup_df'], time_period_col="quarter")
+            fig = charts.configure_plots(fig, chart_title=f"Number of investments by type for {category_name} (startup stage)")
+            chart_file = output_dir / f"{category_name}_quarterly_investment_types_startup_counts.png"
+            fig.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+    
+    finally:
+        # Restore the original theme
+        alt.themes.enable(current_theme)
     
     logger.info(f"Generated {len(chart_files)} charts for {category_name}")
     return chart_files
@@ -351,8 +361,6 @@ def _chart_investment_types(
     stack_order: str = None,
 ):
     """Create a bar chart of investment types"""
-    import altair as alt
-    
     if stack_order is None:
         stack_order = colour_column
     fig = (

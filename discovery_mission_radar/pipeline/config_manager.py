@@ -135,6 +135,14 @@ class PipelineConfig:
         """Get the current mission (AHL or ASF)"""
         return self._config.get('mission', {}).get('current_mission', 'ASF')
     
+    @property
+    def categories_to_show(self) -> Dict[str, List[str]]:
+        """Get categories to show in cross-topic charts by mission"""
+        return self._config.get('categories_to_show', {
+            'ASF': ["Low-carbon heating", "Wind", "Solar", "Hydrogen energy", "Energy efficiency", "CCUS"],
+            'AHL': ["Alternative proteins", "Personalised nutrition", "Food technology", "Health monitoring", "Precision agriculture", "Food waste reduction"]
+        })
+    
     def get_available_missions(self) -> List[str]:
         """Get list of available missions"""
         return ['AHL', 'ASF']
