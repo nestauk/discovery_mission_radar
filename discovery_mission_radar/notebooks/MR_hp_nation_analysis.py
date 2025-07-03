@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[ ]:
+# In[2]:
 
 
 import pandas as pd
 import matplotlib.pyplot as plt
 
-DATA   = "../../outputs/ASF/heat_pumps/crunchbase/csv/Heat pumps_funding_rounds.csv"  # adapt for your own use case
+DATA   = "/Users/aidan.kelly/nesta/discovery/discovery_mission_radar/discovery_mission_radar/outputs/ASF/heat_pumps/crunchbase/csv/Heat pumps_funding_rounds.csv"  # adapt if needed
 
 # --- region & stage maps you already have ------------------------------
 REGION_TO_COUNTRIES = {
@@ -174,14 +174,14 @@ INVEST_TYPE_TO_STAGE = {
 }
 
 
-# In[23]:
+# In[3]:
 
 
 print(COUNTRY_TO_REGION)
 print(INVEST_TYPE_TO_STAGE)
 
 
-# In[24]:
+# In[4]:
 
 
 # 🔹 Crunchbase export already has country_code + investment_type columns
@@ -196,7 +196,7 @@ rounds = (pd.read_csv(DATA, low_memory=False)
 rounds = rounds.query("2020 <= year <= 2024")
 
 
-# In[25]:
+# In[5]:
 
 
 country_stage = (rounds
@@ -211,10 +211,18 @@ country_stage = (rounds
 # ## Region-level plots
 # Run the next two cells to generate stacked bar charts for investment amounts and round counts by region. Select each cell and press Shift+Enter.
 
-# In[27]:
+# In[7]:
 
 
 # 🔹 Investment per region bar chart
+# Aggregate investment by region and stage
+region_stage = (
+    rounds
+    .query("stage in ['early_stage', 'growth_stage']")
+    .groupby(['region', 'stage'], as_index=False)
+    .agg(gbp=('raised_amount_gbp', 'sum'))
+    .assign(gbp_m=lambda d: d['gbp'] / 1_000_000)
+)
 region_pivot = region_stage.pivot(index='region', columns='stage', values='gbp_m').fillna(0).reset_index()
 # Sort by early_stage descending
 region_sorted = region_pivot.sort_values('early_stage', ascending=False)
@@ -232,7 +240,7 @@ plt.tight_layout()
 plt.show()
 
 
-# In[28]:
+# In[8]:
 
 
 # 🔹 Plot counts of funding rounds per region
@@ -264,7 +272,7 @@ plt.tight_layout()
 plt.show()
 
 
-# In[14]:
+# In[9]:
 
 
 uk_de_fr = (country_stage
@@ -279,10 +287,8 @@ uk_de_fr = (country_stage
 print(uk_de_fr)
 
 
-# In[21]:
+# In[11]:
 
-
-import matplotlib.pyplot as plt
 
 # Sort by early_stage descending
 uk_de_fr_sorted = uk_de_fr.sort_values("early_stage", ascending=False)
@@ -310,13 +316,24 @@ plt.tight_layout()
 plt.show()
 
 
-# In[20]:
+# In[13]:
 
 
 # Sort by total bar height (early_stage + growth_stage)
-uk_de_fr_counts_sorted = uk_de_fr_counts.assign(
-    total=lambda d: d["early_stage"] + d["growth_stage"]
-).sort_values("total", ascending=False)
+# Calculate counts of funding rounds for UK, Germany, France by stage
+uk_de_fr_counts = (
+    rounds
+    .query("country_code in ['GBR', 'DEU', 'FRA'] and stage in ['early_stage', 'growth_stage']")
+    .groupby(['country_code', 'stage'])
+    .size()
+    .unstack(fill_value=0)
+    .reset_index()
+    .rename(columns={'country_code': 'country'})
+)
+
+# Sort by total (early_stage + growth_stage) descending
+uk_de_fr_counts['total'] = uk_de_fr_counts['early_stage'] + uk_de_fr_counts['growth_stage']
+uk_de_fr_counts_sorted = uk_de_fr_counts.sort_values('total', ascending=False)
 
 countries = uk_de_fr_counts_sorted['country']
 early_counts = uk_de_fr_counts_sorted['early_stage']
@@ -333,7 +350,7 @@ plt.tight_layout()
 plt.show()
 
 
-# In[30]:
+# In[14]:
 
 
 # 🔹 Germany investment as % of Europe total
@@ -343,15 +360,24 @@ pct = germany_amt / europe_amt * 100 if europe_amt else 0
 print(f"Germany accounts for {pct:.1f}% of Europe's heat pump investment (2020–2024)")
 
 
-# In[44]:
+# In[25]:
 
 
+import numpy as np
 # Add 1Komma5 to the comparison
 # Case-insensitive match for '1komma5' in funding_round_name
-komma5 = rounds_fg[rounds_fg['funding_round_name'].str.contains('1komma5', case=False, na=False)]
+rounds["gbp_m"] = rounds["raised_amount_gbp"] / 1_000_000
+komma5 = rounds[rounds['funding_round_name'].str.contains('1komma5', case=False, na=False)]
 komma5_early = komma5[komma5['stage'] == 'early_stage']['gbp_m'].sum()
 komma5_growth = komma5[komma5['stage'] == 'growth_stage']['gbp_m'].sum()
-
+# Calculate ENPAL early and growth stage investment (case-insensitive)
+enpal = rounds[rounds['funding_round_name'].str.contains('enpal', case=False, na=False)]
+enpal_early = enpal[enpal['stage'] == 'early_stage']['gbp_m'].sum()
+enpal_growth = enpal[enpal['stage'] == 'growth_stage']['gbp_m'].sum()
+# Country totals
+codes = ["DEU", "GBR", "FRA"]
+def amt(code, stage):
+    return rounds[(rounds["country_code"] == code) & (rounds["stage"] == stage)]["gbp_m"].sum()
 # Update values and labels
 early_vals = [enpal_early, komma5_early] + [amt(c, 'early_stage') for c in codes]
 growth_vals = [enpal_growth, komma5_growth] + [amt(c, 'growth_stage') for c in codes]
@@ -369,4 +395,10 @@ plt.title("German companies ENPAL, 1Komma5 vs country investment (2020–2024)")
 plt.legend()
 plt.tight_layout()
 plt.show()
+
+
+# In[ ]:
+
+
+
 
