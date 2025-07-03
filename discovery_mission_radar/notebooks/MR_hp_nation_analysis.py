@@ -7,7 +7,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-DATA   = "/Users/aidan.kelly/nesta/discovery/discovery_mission_radar/discovery_mission_radar/outputs/ASF/heat_pumps/crunchbase/csv/Heat pumps_funding_rounds.csv"  # adapt if needed
+DATA   = "../../outputs/ASF/heat_pumps/crunchbase/csv/Heat pumps_funding_rounds.csv"  # adapt if needed
 
 # --- region & stage maps you already have ------------------------------
 REGION_TO_COUNTRIES = {
