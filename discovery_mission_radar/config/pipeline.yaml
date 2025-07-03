@@ -5,7 +5,7 @@
 mission:
   # Specify which mission to process
   # Only topics from this mission's folder will be processed
-  current_mission: "AHL"  # Default to ASF mission
+  current_mission: "ASF"  # Default to ASF mission
   # Available missions: AHL, ASF
 
 # Date range configuration
@@ -54,7 +54,7 @@ data_sources:
         "cloud_kitchen",
         "delivery_apps",
         "fermentation",
-        #"food_advertisement",
+        "food_advertisement",
         "food_tech_general",
         "health_general",
         "insects",
@@ -95,7 +95,7 @@ data_sources:
         "cloud_kitchen",
         "delivery_apps",
         "fermentation",
-        #"food_advertisement",
+        "food_advertisement",
         "food_tech_general",
         "health_general",
         "insects",
@@ -124,7 +124,7 @@ data_sources:
         "cloud_kitchen",
         "delivery_apps",
         "fermentation",
-        #"food_advertisement",
+        "food_advertisement",
         "food_tech_general",
         "health_general",
         "insects",
@@ -156,7 +156,7 @@ categories_to_show:
     - "reformulation_fat"
     - "reformulation_general"
     - "reformulation_sugar"
-    - "food_advertisement"
+    #- "food_advertisement"
     - "weight_loss_drugs"
 
 # Output settings  
@@ -168,7 +168,7 @@ output:
   # Google Sheets integration
   google_sheets:
     enabled: true
-    sheet_id: "1ARoqHV2sRrADMiImPsD-yxOabkWfvRiP8--aXeG7tyo"
+    sheet_id: "1FcnjzjBKp31MwuunErEYq3qLf9UpXdM4qwTQwt3N_eA"
     upload_aggregated_data: true
 
 # Execution settings

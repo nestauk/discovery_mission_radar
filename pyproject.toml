@@ -27,6 +27,7 @@ dependencies = [
     "scikit-learn>=1.2.0",
     "scipy>=1.10.0",
     "structlog>=22.0.0",
+    "vl-convert-python>=0.2.2",
 ]
 
 [project.urls]

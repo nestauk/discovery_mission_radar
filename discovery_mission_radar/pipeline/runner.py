@@ -25,6 +25,7 @@ class MissionRadarRunner:
     def __init__(self, config_dir, output_dir=None):
         self.config_dir = Path(config_dir)
         self.output_dir = Path(output_dir) if output_dir else Path("./outputs")
+        print("Output directory:", self.output_dir)
         self.cache_dir = self.output_dir / ".cache"
         
         self.pipeline_config = get_pipeline_config()

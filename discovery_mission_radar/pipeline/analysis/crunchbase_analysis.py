@@ -55,9 +55,9 @@ def produce_cb_stats(topic_data: Dict[str, Any], output_dir: Path, cb_getter=Non
         CB = cb.CrunchbaseGetter()
     else:
         CB = cb_getter
-    
-    funding_round_types = ["angel", "pre_seed", "seed", "series_a", "series_b"]
-    
+
+    funding_round_types = cb.INVESTMENT_STAGES['early_stage'] + cb.INVESTMENT_STAGES['growth_stage']
+
     matchings_orgs_df = CB.organisations_enriched.query("id in @matching_ids")
     
     funding_rounds_df = CB.select_funding_rounds(
