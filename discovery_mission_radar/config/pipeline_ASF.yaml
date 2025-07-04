@@ -5,7 +5,7 @@
 mission:
   # Specify which mission to process
   # Only topics from this mission's folder will be processed
-  current_mission: "AHL"  # Default to ASF mission
+  current_mission: "ASF"  # Default to ASF mission
   # Available missions: AHL, ASF
 
 # Date range configuration
@@ -167,9 +167,9 @@ output:
   
   # Google Sheets integration
   google_sheets:
-    enabled: false
+    enabled: true
     sheet_id: "1FcnjzjBKp31MwuunErEYq3qLf9UpXdM4qwTQwt3N_eA"
-    upload_aggregated_data: false
+    upload_aggregated_data: true
 
 # Execution settings
 execution:
