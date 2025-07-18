@@ -22,12 +22,25 @@ class MissionRadarRunner:
     Data Sources → Analysis → Charts
     """
     
-    def __init__(self, config_dir, output_dir=None):
+    def __init__(self, config_dir, output_dir=None, mission: str = "ASF"):
+        """
+        Initialise Mission Radar Runner
+        
+        Args:
+            config_dir: Configuration directory path
+            output_dir: Output directory path (default: ./outputs) 
+            mission: Mission to process - required parameter
+        """
         self.config_dir = Path(config_dir)
         self.output_dir = Path(output_dir) if output_dir else Path("./outputs")
-        self.cache_dir = self.output_dir / ".cache"
         
-        self.pipeline_config = get_pipeline_config()
+        self.mission = mission.upper()
+        
+        self.cache_dir = self.output_dir / ".cache" / self.mission.lower()
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize config with mission parameter
+        self.pipeline_config = get_pipeline_config(self.mission)
         
         self.topics_dir = self.pipeline_config.get_topics_directory(self.config_dir)
         
@@ -35,8 +48,8 @@ class MissionRadarRunner:
         
         self._initialize_data_sources()
         
-        logger.info(f"Initialized MissionRadarRunner with config_dir={config_dir}, output_dir={self.output_dir}")
-        logger.info(f"Current mission: {self.pipeline_config.current_mission}")
+        logger.info(f"Initialized MissionRadarRunner with mission={self.mission}, config_dir={config_dir}, output_dir={self.output_dir}")
+        logger.info(f"Mission-specific cache directory: {self.cache_dir}")
         logger.info(f"Topics directory: {self.topics_dir}")
     
     def _initialize_getters(self):
@@ -85,9 +98,8 @@ class MissionRadarRunner:
         - Using native category for Crunchbase if available and not excluded
         - Using config-based processing for GTR/Hansard if topic config exists and not excluded
         """
-        logger.info(f"Processing topic: {topic_name} (Mission: {self.pipeline_config.current_mission})")
+        logger.info(f"Processing topic: {topic_name} (Mission: {self.mission})")
         
-        # Try to load topic config first (needed for GTR/Hansard even if Crunchbase uses native category)
         topic_config = None
         has_config = False
         try:
@@ -101,10 +113,10 @@ class MissionRadarRunner:
             # Pure native category - only Crunchbase processing possible
             has_config = False
         
-        topic_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}" / topic_name
+        topic_output_dir = self.output_dir / f"{self.mission}" / topic_name
         topic_output_dir.mkdir(parents=True, exist_ok=True)
         
-        results = {'topic_name': topic_name, 'mission': self.pipeline_config.current_mission}
+        results = {'topic_name': topic_name, 'mission': self.mission}
         
         # Data Sources Phase
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'crunchbase'):
@@ -116,7 +128,7 @@ class MissionRadarRunner:
                 logger.info("Processing Crunchbase data source")
                 cb_data = self.data_sources['crunchbase'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['crunchbase'], 
-                    mission=self.pipeline_config.current_mission
+                    mission=self.mission
                 )
                 cb_results = crunchbase_analysis.produce_cb_stats(cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase'])
                 results['crunchbase'] = cb_results
@@ -130,7 +142,7 @@ class MissionRadarRunner:
                 logger.info("Processing GTR data source")
                 gtr_data = self.data_sources['gtr'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['gtr'],
-                    mission=self.pipeline_config.current_mission
+                    mission=self.mission
                 )
                 gtr_results = gtr_analysis.produce_gtr_stats(gtr_data, topic_output_dir / "gtr", self.getters['gtr'])
                 results['gtr'] = gtr_results
@@ -144,7 +156,7 @@ class MissionRadarRunner:
                 logger.info("Processing Hansard data source")
                 hansard_data = self.data_sources['hansard'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
-                    use_llm_check=False, mission=self.pipeline_config.current_mission
+                    use_llm_check=False, mission=self.mission
                 )
                 hansard_results = hansard_analysis.produce_hansard_stats(hansard_data, topic_output_dir / "hansard", self.getters['hansard'])
                 results['hansard'] = hansard_results
@@ -190,7 +202,7 @@ class MissionRadarRunner:
     
     def run_batch_analysis(self, topics: List[str]) -> Dict[str, Any]:
         """Run analysis on multiple topics and consolidate results"""
-        logger.info(f"Starting batch analysis for {len(topics)} topics: {topics} (Mission: {self.pipeline_config.current_mission})")
+        logger.info(f"Starting batch analysis for {len(topics)} topics: {topics} (Mission: {self.mission})")
         
         topic_results = []
         
@@ -204,7 +216,7 @@ class MissionRadarRunner:
                 continue
         
         # Create mission-specific output directory
-        mission_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}_batch"
+        mission_output_dir = self.output_dir / f"{self.mission}_batch"
         mission_output_dir.mkdir(parents=True, exist_ok=True)
         
         # Consolidate all results
@@ -214,7 +226,7 @@ class MissionRadarRunner:
         radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir)
         
         return {
-            'mission': self.pipeline_config.current_mission,
+            'mission': self.mission,
             'topic_results': topic_results,
             'consolidated_files': consolidated_files,
             'radar_charts': radar_charts
@@ -226,7 +238,7 @@ class MissionRadarRunner:
         - All available topics (with selective data source processing based on exclusions)
         - Crunchbase native categories
         """
-        logger.info(f"Starting comprehensive analysis for mission: {self.pipeline_config.current_mission}")
+        logger.info(f"Starting comprehensive analysis for mission: {self.mission}")
         
         available_topics = self.list_available_topics()
         
@@ -250,7 +262,7 @@ class MissionRadarRunner:
                 continue
         
         # Create mission-specific output directory
-        mission_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}"
+        mission_output_dir = self.output_dir / f"{self.mission}"
         mission_output_dir.mkdir(parents=True, exist_ok=True)
         
         # Consolidate all results
@@ -259,9 +271,9 @@ class MissionRadarRunner:
         # Generate cross-topic radar charts
         radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir)
         
-        logger.info(f"✅ Comprehensive analysis completed for mission: {self.pipeline_config.current_mission}!")
+        logger.info(f"✅ Comprehensive analysis completed for mission: {self.mission}!")
         return {
-            'mission': self.pipeline_config.current_mission,
+            'mission': self.mission,
             'topic_results': topic_results,
             'consolidated_files': consolidated_files,
             'radar_charts': radar_charts,
@@ -279,11 +291,11 @@ class MissionRadarRunner:
         This method reconstructs topic results from existing CSV files in the output directory
         and generates cross-topic comparison charts without re-running the individual analyses.
         """
-        logger.info(f"Generating radar charts from existing results for mission: {self.pipeline_config.current_mission}")
+        logger.info(f"Generating radar charts from existing results for mission: {self.mission}")
         
-        mission_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}"
+        mission_output_dir = self.output_dir / f"{self.mission}"
         if not mission_output_dir.exists():
-            raise ValueError(f"No existing results found for mission {self.pipeline_config.current_mission} in {mission_output_dir}")
+            raise ValueError(f"No existing results found for mission {self.mission} in {mission_output_dir}")
         
         topic_results = self._reconstruct_topic_results(mission_output_dir)
         
@@ -295,9 +307,9 @@ class MissionRadarRunner:
         # Generate cross-topic radar charts
         radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir)
         
-        logger.info(f"Radar charts generation completed for mission: {self.pipeline_config.current_mission}!")
+        logger.info(f"Radar charts generation completed for mission: {self.mission}!")
         return {
-            'mission': self.pipeline_config.current_mission,
+            'mission': self.mission,
             'radar_charts': radar_charts,
             'topics_processed': len(topic_results)
         }
@@ -320,7 +332,7 @@ class MissionRadarRunner:
             
             topic_result = {
                 'topic_name': topic_name,
-                'mission': self.pipeline_config.current_mission
+                'mission': self.mission
             }
             
             cb_csv_dir = topic_dir / "crunchbase" / "csv"
@@ -424,9 +436,9 @@ class MissionRadarRunner:
             # Pure native category - only Crunchbase processing possible
             has_config = False
         
-        topic_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}" / topic_name
+        topic_output_dir = self.output_dir / f"{self.mission}" / topic_name
         topic_output_dir.mkdir(parents=True, exist_ok=True)
-        result = {'topic_name': topic_name, 'mission': self.pipeline_config.current_mission}
+        result = {'topic_name': topic_name, 'mission': self.mission}
         
         if has_config:
             result['config'] = topic_config
@@ -441,7 +453,7 @@ class MissionRadarRunner:
                 logger.info("Processing Crunchbase data source")
                 cb_data = self.data_sources['crunchbase'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['crunchbase'],
-                    mission=self.pipeline_config.current_mission
+                    mission=self.mission
                 )
                 cb_analysis = crunchbase_analysis.produce_cb_stats(
                     cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
@@ -456,7 +468,7 @@ class MissionRadarRunner:
                 logger.info("Processing GTR data source")
                 gtr_data = self.data_sources['gtr'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['gtr'],
-                    mission=self.pipeline_config.current_mission
+                    mission=self.mission
                 )
                 gtr_analysis_result = gtr_analysis.produce_gtr_stats(
                     gtr_data, topic_output_dir / "gtr", self.getters['gtr']
@@ -471,7 +483,7 @@ class MissionRadarRunner:
                 logger.info("Processing Hansard data source") 
                 hansard_data = self.data_sources['hansard'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
-                    use_llm_check=False, mission=self.pipeline_config.current_mission
+                    use_llm_check=False, mission=self.mission
                 )
                 hansard_analysis_result = hansard_analysis.produce_hansard_stats(
                     hansard_data, topic_output_dir / "hansard", self.getters['hansard']
@@ -486,7 +498,7 @@ class MissionRadarRunner:
         """Run Crunchbase analysis using native Crunchbase categories (like Solar, Wind) - legacy method"""
         logger.warning("run_crunchbase_native_category is deprecated, use run_topic_end_to_end with native category configured in pipeline.yaml")
         
-        topic_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}" / topic_name
+        topic_output_dir = self.output_dir / f"{self.mission}" / topic_name
         topic_output_dir.mkdir(parents=True, exist_ok=True)
         
         # Create a mock config for native categories
@@ -516,7 +528,7 @@ class MissionRadarRunner:
         
         return {
             'topic_name': topic_name,
-            'mission': self.pipeline_config.current_mission,
+            'mission': self.mission,
             'config': mock_config,
             'crunchbase': cb_analysis
         }
@@ -532,7 +544,7 @@ class MissionRadarRunner:
             topic_name = config_file.stem.replace("config_", "")
             topics.append(topic_name)
         
-        logger.info(f"Found {len(topics)} topics for mission {self.pipeline_config.current_mission}")
+        logger.info(f"Found {len(topics)} topics for mission {self.mission}")
         return sorted(topics)
     
     def list_topics_by_mission(self, mission: str) -> List[str]:
@@ -599,7 +611,7 @@ class MissionRadarRunner:
         """Load topic configuration with basic validation from mission-specific directory"""
         config_file = self.topics_dir / f"config_{topic_name}.yaml"
         if not config_file.exists():
-            raise ValueError(f"Topic config not found: {config_file} (Mission: {self.pipeline_config.current_mission})")
+            raise ValueError(f"Topic config not found: {config_file} (Mission: {self.mission})")
         
         with open(config_file, 'r') as f:
             config = yaml.safe_load(f)
@@ -614,7 +626,7 @@ class MissionRadarRunner:
     
     def get_topic_summary(self, topic_name: str) -> Dict[str, Any]:
         """Get a summary of outputs for a topic"""
-        topic_output_dir = self.output_dir / f"{self.pipeline_config.current_mission}" / topic_name
+        topic_output_dir = self.output_dir / f"{self.mission}" / topic_name
         if not topic_output_dir.exists():
             return {'status': 'not_processed', 'files': []}
         
