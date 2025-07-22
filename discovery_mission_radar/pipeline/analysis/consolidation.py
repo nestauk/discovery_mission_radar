@@ -11,7 +11,7 @@ from discovery_mission_radar.pipeline.config_manager import get_pipeline_config
 
 logger = logging.getLogger(__name__)
 
-def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path) -> Dict[str, str]:
+def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path, mission: str) -> Dict[str, str]:
     """
     Consolidate all topic results into final CSV files
     
@@ -22,16 +22,17 @@ def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path
     Returns:
         Dictionary mapping CSV file names to their paths
     """
+    config = get_pipeline_config(mission)
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Consolidating data from {len(topic_results)} topics")
     
     consolidated_files = {}
     
-    cb_stats, cb_stats_quarterly, cb_companies, cb_funding, cb_ipos, cb_acquisitions = _consolidate_crunchbase_data(topic_results)
+    cb_stats, cb_stats_quarterly, cb_companies, cb_funding, cb_ipos, cb_acquisitions = _consolidate_crunchbase_data(topic_results, mission)
     
-    ukri_stats, ukri_stats_quarterly, ukri_projects = _consolidate_gtr_data(topic_results)
+    ukri_stats, ukri_stats_quarterly, ukri_projects = _consolidate_gtr_data(topic_results, mission)
     
-    hansard_stats, hansard_stats_quarterly, hansard_speeches = _consolidate_hansard_data(topic_results)
+    hansard_stats, hansard_stats_quarterly, hansard_speeches = _consolidate_hansard_data(topic_results, mission)
     
     # Define data to save with their corresponding filenames
     data_to_save = [
@@ -59,7 +60,6 @@ def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path
     logger.info(f"Consolidation complete. Generated {len(consolidated_files)} files")
     
     # Upload to Google Sheets if enabled
-    config = get_pipeline_config()
     if config.google_sheets_enabled and config.upload_aggregated_data and config.google_sheets_id:
         try:
             _upload_to_google_sheets(
@@ -74,7 +74,7 @@ def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path
     
     return consolidated_files
 
-def _consolidate_crunchbase_data(topic_results: List[Dict[str, Any]]) -> tuple:
+def _consolidate_crunchbase_data(topic_results: List[Dict[str, Any]], mission: str) -> tuple:
     """Consolidate Crunchbase data from all topics"""
     all_stats = []
     all_stats_quarterly = []
@@ -134,7 +134,7 @@ def _consolidate_crunchbase_data(topic_results: List[Dict[str, Any]]) -> tuple:
         pd.concat(all_acquisitions, ignore_index=True) if all_acquisitions else pd.DataFrame()
     )
 
-def _consolidate_gtr_data(topic_results: List[Dict[str, Any]]) -> tuple:
+def _consolidate_gtr_data(topic_results: List[Dict[str, Any]], mission: str) -> tuple:
     """Consolidate GTR (UKRI) data from all topics"""
     all_stats = []
     all_stats_quarterly = []
@@ -178,7 +178,7 @@ def _consolidate_gtr_data(topic_results: List[Dict[str, Any]]) -> tuple:
         pd.concat(all_projects, ignore_index=True) if all_projects else pd.DataFrame()
     )
 
-def _consolidate_hansard_data(topic_results: List[Dict[str, Any]]) -> tuple:
+def _consolidate_hansard_data(topic_results: List[Dict[str, Any]], mission: str) -> tuple:
     """Consolidate Hansard data from all topics"""
     all_stats = []
     all_stats_quarterly = []
@@ -248,7 +248,9 @@ def _upload_to_google_sheets(
         'ukri_projects': ukri_projects,
         'hansard_stats': hansard_stats,
         'hansard_stats_quarterly': hansard_stats_quarterly,
-        'hansard_speeches': hansard_speeches
+        # TODO: bug - sheet upload error - input contains more than the maximum of 50000 characters in a single cell
+        # upload manually
+        #'hansard_speeches': hansard_speeches 
     }
     
     # Add non-empty dataframes to the dataframes dict

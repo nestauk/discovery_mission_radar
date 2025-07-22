@@ -11,18 +11,23 @@ import yaml
 from discovery_utils.getters import crunchbase as cb_getters, gtr as gtr_getters
 from discovery_utils.synthesis.policy import policy_update
 from discovery_mission_radar.pipeline.data_sources import CrunchbaseDataSource, GtrDataSource, HansardDataSource
-from discovery_mission_radar.pipeline.analysis import crunchbase_analysis, gtr_analysis, hansard_analysis, aggregation, consolidation
+from discovery_mission_radar.pipeline.analysis import (
+    CrunchbaseAnalysisModule, GtrAnalysisModule, HansardAnalysisModule
+)
+from discovery_mission_radar.pipeline.analysis import consolidation, aggregation
 from discovery_mission_radar.pipeline.config_manager import get_pipeline_config
 
 logger = logging.getLogger(__name__)
 
 class MissionRadarRunner:
     """
-    Orchestrator that for the Mission Radar Pipeline.
-    Data Sources → Analysis → Charts
+    Main pipeline runner for Mission Radar data processing.
+    
+    This class orchestrates the entire pipeline: data collection, analysis, and output generation
+    for a specific mission (AHL or ASF).
     """
     
-    def __init__(self, config_dir, output_dir=None, mission: str = "ASF"):
+    def __init__(self, mission: str, config_dir: Path = None, output_dir: Path = None, cache_dir: Path = None):
         """
         Initialise Mission Radar Runner
         
@@ -47,6 +52,13 @@ class MissionRadarRunner:
         self._initialize_getters()
         
         self._initialize_data_sources()
+        
+        # Initialize analysis modules
+        self.analysis_modules = {
+            'crunchbase': CrunchbaseAnalysisModule(self.mission),
+            'gtr': GtrAnalysisModule(self.mission),
+            'hansard': HansardAnalysisModule(self.mission)
+        }
         
         logger.info(f"Initialized MissionRadarRunner with mission={self.mission}, config_dir={config_dir}, output_dir={self.output_dir}")
         logger.info(f"Mission-specific cache directory: {self.cache_dir}")
@@ -130,7 +142,9 @@ class MissionRadarRunner:
                     topic_name, self.cache_dir, topic_config, self.getters['crunchbase'], 
                     mission=self.mission
                 )
-                cb_results = crunchbase_analysis.produce_cb_stats(cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase'])
+                cb_results = self.analysis_modules['crunchbase'].analyse_topic(
+                    cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
+                )
                 results['crunchbase'] = cb_results
             else:
                 logger.info("Skipping Crunchbase data source (no config available)")
@@ -144,7 +158,9 @@ class MissionRadarRunner:
                     topic_name, self.cache_dir, topic_config, self.getters['gtr'],
                     mission=self.mission
                 )
-                gtr_results = gtr_analysis.produce_gtr_stats(gtr_data, topic_output_dir / "gtr", self.getters['gtr'])
+                gtr_results = self.analysis_modules['gtr'].analyse_topic(
+                    gtr_data, topic_output_dir / "gtr", self.getters['gtr']
+                )
                 results['gtr'] = gtr_results
             else:
                 logger.info("Skipping GTR data source (no config available)")
@@ -158,7 +174,9 @@ class MissionRadarRunner:
                     topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
                     use_llm_check=False, mission=self.mission
                 )
-                hansard_results = hansard_analysis.produce_hansard_stats(hansard_data, topic_output_dir / "hansard", self.getters['hansard'])
+                hansard_results = self.analysis_modules['hansard'].analyse_topic(
+                    hansard_data, topic_output_dir / "hansard", self.getters['hansard']
+                )
                 results['hansard'] = hansard_results
             else:
                 logger.info("Skipping Hansard data source (no config available)")
@@ -196,7 +214,7 @@ class MissionRadarRunner:
             'relevant_count': len(company_ids)
         }
         
-        return crunchbase_analysis.produce_cb_stats(
+        return self.analysis_modules['crunchbase'].analyse_topic(
             cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
         )
     
@@ -220,10 +238,10 @@ class MissionRadarRunner:
         mission_output_dir.mkdir(parents=True, exist_ok=True)
         
         # Consolidate all results
-        consolidated_files = consolidation.consolidate_all_topics(topic_results, mission_output_dir)
+        consolidated_files = consolidation.consolidate_all_topics(topic_results, mission_output_dir, self.mission)
         
         # Generate cross-topic radar charts
-        radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir)
+        radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir, self.mission)
         
         return {
             'mission': self.mission,
@@ -266,10 +284,10 @@ class MissionRadarRunner:
         mission_output_dir.mkdir(parents=True, exist_ok=True)
         
         # Consolidate all results
-        consolidated_files = consolidation.consolidate_all_topics(topic_results, mission_output_dir)
+        consolidated_files = consolidation.consolidate_all_topics(topic_results, mission_output_dir, self.mission)
         
         # Generate cross-topic radar charts
-        radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir)
+        radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir, self.mission)
         
         logger.info(f"✅ Comprehensive analysis completed for mission: {self.mission}!")
         return {
@@ -305,7 +323,7 @@ class MissionRadarRunner:
         logger.info(f"Found results for {len(topic_results)} topics")
         
         # Generate cross-topic radar charts
-        radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir)
+        radar_charts = aggregation.produce_radar_charts(topic_results, mission_output_dir, self.mission)
         
         logger.info(f"Radar charts generation completed for mission: {self.mission}!")
         return {
@@ -455,7 +473,7 @@ class MissionRadarRunner:
                     topic_name, self.cache_dir, topic_config, self.getters['crunchbase'],
                     mission=self.mission
                 )
-                cb_analysis = crunchbase_analysis.produce_cb_stats(
+                cb_analysis = self.analysis_modules['crunchbase'].analyse_topic(
                     cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
                 )
                 result['crunchbase'] = cb_analysis
@@ -470,7 +488,7 @@ class MissionRadarRunner:
                     topic_name, self.cache_dir, topic_config, self.getters['gtr'],
                     mission=self.mission
                 )
-                gtr_analysis_result = gtr_analysis.produce_gtr_stats(
+                gtr_analysis_result = self.analysis_modules['gtr'].analyse_topic(
                     gtr_data, topic_output_dir / "gtr", self.getters['gtr']
                 )
                 result['gtr'] = gtr_analysis_result
@@ -485,7 +503,7 @@ class MissionRadarRunner:
                     topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
                     use_llm_check=False, mission=self.mission
                 )
-                hansard_analysis_result = hansard_analysis.produce_hansard_stats(
+                hansard_analysis_result = self.analysis_modules['hansard'].analyse_topic(
                     hansard_data, topic_output_dir / "hansard", self.getters['hansard']
                 )
                 result['hansard'] = hansard_analysis_result
@@ -522,7 +540,7 @@ class MissionRadarRunner:
             'relevant_count': len(company_ids)  # No LLM filtering for native categories
         }
         
-        cb_analysis = crunchbase_analysis.produce_cb_stats(
+        cb_analysis = self.analysis_modules['crunchbase'].analyse_topic(
             cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
         )
         

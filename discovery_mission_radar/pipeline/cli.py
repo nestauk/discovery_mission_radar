@@ -315,7 +315,7 @@ def show_config(mission: str):
     # Show included topics for current mission
     try:
         config_dir = Path(__file__).parent.parent / "config"
-        runner = MissionRadarRunner(config_dir, Path("outputs"), mission=mission)
+        runner = MissionRadarRunner(mission, config_dir, Path("outputs"))
         
         available_topics = runner.list_available_topics()
         native_categories = config.get_crunchbase_native_categories()
@@ -439,7 +439,7 @@ Selective Processing:
     
     # Initialise runner
     try:
-        runner = MissionRadarRunner(args.config_dir, args.output_dir, mission=mission)
+        runner = MissionRadarRunner(mission, args.config_dir, args.output_dir)
     except Exception as e:
         logger.error(f"Failed to initialize runner: {e}")
         sys.exit(1)
