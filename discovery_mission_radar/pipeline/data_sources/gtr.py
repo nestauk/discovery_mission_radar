@@ -38,7 +38,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
                          mission: str = None, **kwargs) -> tuple[List[str], int]:
         """Fetch fresh data from GtR and return relevant project IDs."""
         
-        enrichment_df = self._get_or_create_enrichment_data(getter, cache_dir)
+        enrichment_df = self._get_or_create_enrichment_data(getter, cache_dir, mission)
         self.logger.info(f"Using enrichment data with {len(enrichment_df)} entries")
         
         # Get projects by category
@@ -52,7 +52,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
         
         return relevant_ids, len(projects_df)
     
-    def _get_or_create_enrichment_data(self, GTR: gtr.GtrGetter, cache_dir: Path) -> pd.DataFrame:
+    def _get_or_create_enrichment_data(self, GTR: gtr.GtrGetter, cache_dir: Path, mission: str) -> pd.DataFrame:
         """Get or create enrichment data"""
         enrichment_cache_file = cache_dir / "gtr_labelled_projects.csv"
         
@@ -69,7 +69,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
                 self.logger.warning(f"Could not load cached enrichment data: {e}. Will regenerate.")
         
         self.logger.info("Enriching GTR data")
-        pipeline_config = get_pipeline_config()
+        pipeline_config = get_pipeline_config(mission)
         start_date = pipeline_config.data_start_date
         end_date = pipeline_config.data_end_date
         
@@ -79,7 +79,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
         )
         new_projects_text = GTR.get_projects_text().query("id in @new_projects.id.to_list()")
         
-        enrichment_df = kw.enrich_topic_labels(new_projects_text)  # This will take 5-6 minutes
+        enrichment_df = kw.enrich_topic_labels(new_projects_text) 
         
         # Cache the enrichment data
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +121,6 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
         # Get mission-aware custom instructions
         custom_instructions = self._get_mission_specific_instructions(mission or "Unknown")
         
-        # Use shared LLM relevance check function
         return run_llm_relevance_check(
             projects_with_text,
             config,

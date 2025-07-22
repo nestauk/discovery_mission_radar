@@ -1,18 +1,12 @@
 # Mission Radar Pipeline Configuration
 # This file controls the overall pipeline execution settings
 
-# Mission configuration
-mission:
-  # Specify which mission to process
-  # Only topics from this mission's folder will be processed
-  current_mission: "AHL"  # Default to ASF mission
-  # Available missions: AHL, ASF
 
 # Date range configuration
 date_ranges:
   # Data fetching ranges
   data_start_date: "2014-01-01"
-  data_end_date: "2025-06-30"  # End of current quarter by default
+  data_end_date: "2025-06-30"
   
   # Analysis ranges
   yearly_analysis:
@@ -21,7 +15,7 @@ date_ranges:
     
   quarterly_analysis:
     start_quarter: "2023-Q1"
-    end_quarter: "2025-Q2"  # Current quarter
+    end_quarter: "2025-Q2"
     
   # Growth analysis
   growth_analysis:
@@ -167,9 +161,10 @@ output:
   
   # Google Sheets integration
   google_sheets:
-    enabled: false
-    sheet_id: "1FcnjzjBKp31MwuunErEYq3qLf9UpXdM4qwTQwt3N_eA"
-    upload_aggregated_data: false
+    enabled: true
+    ahl_sheet_id: "19LezmfR4azwXmtepI_ASTgu7MYr2-sdPgp_8pGv-JaM"
+    asf_sheet_id: "kmHGOcNzBBtO3aZnRsmELic35rD4XetExS0eJASH1fQ"
+    upload_aggregated_data: true
 
 # Execution settings
 execution:

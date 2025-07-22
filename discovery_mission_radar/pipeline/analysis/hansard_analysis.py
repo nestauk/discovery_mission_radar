@@ -1,281 +1,267 @@
 """
-Hansard analysis
+Hansard Analysis Module.
 """
+
 import pandas as pd
 from pathlib import Path
 from typing import Dict, Any, List
-from discovery_utils.synthesis.policy import policy_update
-from discovery_utils.utils import charts, analysis
-import altair as alt
 import logging
 import datetime
 import re
+import altair as alt
+
+from .base import BaseAnalysisModule
 from ..config_manager import get_pipeline_config
+
+from discovery_utils.synthesis.policy import policy_update
+from discovery_utils.utils import charts, analysis
 
 logger = logging.getLogger(__name__)
 
-def produce_hansard_stats(topic_data: Dict[str, Any], output_dir: Path, hansard_getter=None) -> Dict[str, Any]:
-    """
-    Process Hansard speech IDs through analysis functions to produce charts and CSVs.
-    
-    Mirrors the Hansard notebook process:
-    Get relevant speech IDs → Analysis functions → Charts + CSVs
-    
-    Args:
-        topic_data: Output from HansardDataSource.get_data() containing IDs and config
-        output_dir: Directory to save charts and CSV files
-        hansard_getter: Pre-initialized HansardData (optional)
-        
-    Returns:
-        Dictionary with file paths and statistics
-    """
-    # Get configuration
-    config = get_pipeline_config()
-    
-    matching_ids = topic_data['ids']
-    category_name = topic_data['config']['search_recipe']['category_name']
-    
-    logger.info(f"Producing Hansard stats for {category_name} with {len(matching_ids)} speeches")
-    
-    try:
-        if hansard_getter is None:
-            HansardData = policy_update.HansardData()
-        else:
-            HansardData = hansard_getter
-        
-        speeches_df = _get_speeches_data(HansardData, config)
-        
-        selected_df = (
-            speeches_df
-            .query("speech_id in @matching_ids")
-            .drop_duplicates(subset="speech_id")
-            .assign(speech_text_norm=lambda df: df.speech.apply(lambda x: re.sub(r"\s+", " ", x)))
-            .drop_duplicates(["speakername", "date", "speech_text_norm"])
-        )
-        
-        ts_quarterly_df = (
-            selected_df
-            .query(config.get_quarterly_analysis_filter())
-            .groupby("quarter")
-            .agg(speeches=("speech_id", "count"))
-            .reset_index()
-            .pipe(impute_missing_quarters, 
-                  min_quarter=config.quarterly_start_quarter, 
-                  max_quarter=config.quarterly_end_quarter)
-        )
-        
-        ts_yearly_df = (
-            selected_df
-            .query(config.get_yearly_analysis_filter())
-            .groupby("year")
-            .agg(speeches=("speech_id", "count"))
-            .reset_index()
-            .assign(year=lambda df: df.year.astype(int))
-            .pipe(impute_missing_years, 
-                  min_year=config.yearly_start_year, 
-                  max_year=config.yearly_end_year)
-        )
-        
-        growth_magnitude_df = (
-            analysis.magnitude_growth(ts_yearly_df, 
-                                    year_start=config.growth_base_year, 
-                                    year_end=config.growth_comparison_year)
-            .assign(theme=category_name)
-            .reset_index()
-            .rename(columns={'index': 'variable'})
-        )
-        
-        growth_magnitude_quarterly_df = _calculate_quarterly_growth(ts_quarterly_df, category_name, config)
-        
-        output_dir.mkdir(parents=True, exist_ok=True)
-        csv_dir = output_dir / "csv"
-        charts_dir = output_dir / "charts"
-        csv_dir.mkdir(exist_ok=True)
-        charts_dir.mkdir(exist_ok=True)
-        
-        csv_files = _save_csv_files({
-            'selected_speeches': selected_df,
-            'ts_quarterly': ts_quarterly_df,
-            'ts_yearly': ts_yearly_df,
-            'growth_magnitude': growth_magnitude_df,
-            'growth_magnitude_quarterly': growth_magnitude_quarterly_df
-        }, csv_dir, category_name)
 
-        chart_files = _generate_charts({
-            'ts_quarterly_df': ts_quarterly_df
-        }, charts_dir, category_name)
+class HansardAnalysisModule(BaseAnalysisModule[policy_update.HansardData]):
+    """Hansard analysis module implementation using BaseAnalysisModule ABC."""
+    
+    def __init__(self, mission: str):
+        super().__init__("hansard", mission)
+    
+    def _create_default_getter(self) -> policy_update.HansardData:
+        """Create default HansardData instance."""
+        return policy_update.HansardData()
+    
+    def _process_topic_data(self, topic_data: Dict[str, Any], getter: policy_update.HansardData) -> Dict[str, pd.DataFrame]:
+        """Process Hansard topic data using existing discovery_utils analysis functions.
         
-        return {
-            'csv_files': csv_files,
-            'chart_files': chart_files,
-            'stats': {
-                'speeches_analysed': len(selected_df),
-                'unique_speakers': selected_df['speakername'].nunique() if not selected_df.empty else 0,
-                'date_range': f"{selected_df['date'].min()} to {selected_df['date'].max()}" if not selected_df.empty else "N/A"
-            }
-        }
+        Mirrors the existing produce_hansard_stats logic exactly.
+        """
+        matching_ids = topic_data['ids']
+        category_name = topic_data['config']['search_recipe']['category_name']
+        config = self.config
         
-    except Exception as e:
-        logger.error(f"Error processing Hansard data: {e}")
-        return {
-            'csv_files': [],
-            'chart_files': [],
-            'stats': {
-                'speeches_analysed': 0,
-                'unique_speakers': 0,
-                'date_range': "N/A"
-            }
-        }
-
-def _get_speeches_data(HansardData, config) -> pd.DataFrame:
-    """Get speeches data"""
-    missions = [config.current_mission]
-    
-    speeches_df = (
-        HansardData.debates_df
-        .query(config.get_date_query_filter())
-        .merge(
-            HansardData.labelstore_df[['id', 'mission_labels', 'topic_labels']],
-            left_on='speech_id',
-            right_on='id',
-            how='left'
-        )
-        .assign(mission_labels=lambda df: df.mission_labels.apply(lambda x: x.split(",") if (type(x) is str) else []))
-        .assign(topic_labels=lambda df: df.topic_labels.apply(lambda x: x.split(",") if (type(x) is str) else []))
-        .explode("mission_labels")
-        .query("mission_labels in @missions")
-        .explode("topic_labels")
-        .assign(quarter=lambda df: df.date.apply(get_quarter_from_date))
-        .assign(quarter=lambda df: df.year.astype(str) + "-Q" + df.quarter.astype(str))
-    )
-    
-    return speeches_df
-
-def _generate_charts(data: Dict[str, pd.DataFrame], output_dir: Path, category_name: str) -> List[str]:
-    """Generate all charts"""
-    chart_files = []
-    scale_factor = 2
-    
-    # Temporarily disable the nestafont theme to ensure text visibility
-    current_theme = alt.themes.active
-    alt.themes.enable('default')
-    
-    try:
-        if not data['ts_quarterly_df'].empty:
-            fig = charts.ts_bar(
-                data['ts_quarterly_df'],
-                variable="speeches",
-                variable_title="Number of speeches",
-                time_column="quarter",
+        try:
+            # Get speeches data
+            speeches_df = self._get_speeches_data(getter, config)
+            
+            # Filter to selected speeches and process
+            selected_df = (
+                speeches_df
+                .query("speech_id in @matching_ids")
+                .drop_duplicates(subset="speech_id")
+                .assign(speech_text_norm=lambda df: df.speech.apply(lambda x: re.sub(r"\s+", " ", x)))
+                .drop_duplicates(["speakername", "date", "speech_text_norm"])
             )
-            fig = charts.configure_plots(fig, chart_title=f"Number of speeches for {category_name}")
-            chart_file = output_dir / f"hansard_{category_name}_quarterly_speeches.png"
-            fig.save(str(chart_file), scale_factor=scale_factor)
-            chart_files.append(str(chart_file))
+            
+            # Quarterly analysis
+            ts_quarterly_df = (
+                selected_df
+                .query(config.get_quarterly_analysis_filter())
+                .groupby("quarter")
+                .agg(speeches=("speech_id", "count"))
+                .reset_index()
+                .pipe(self._impute_missing_quarters, 
+                      min_quarter=config.quarterly_start_quarter, 
+                      max_quarter=config.quarterly_end_quarter)
+            )
+            
+            # Yearly analysis
+            ts_yearly_df = (
+                selected_df
+                .query(config.get_yearly_analysis_filter())
+                .groupby("year")
+                .agg(speeches=("speech_id", "count"))
+                .reset_index()
+                .assign(year=lambda df: df.year.astype(int))
+                .pipe(self._impute_missing_years, 
+                      min_year=config.yearly_start_year, 
+                      max_year=config.yearly_end_year)
+            )
+            
+            # Growth magnitude calculations
+            growth_magnitude_df = (
+                analysis.magnitude_growth(ts_yearly_df, 
+                                        year_start=config.growth_base_year, 
+                                        year_end=config.growth_comparison_year)
+                .assign(theme=category_name)
+                .reset_index()
+                .rename(columns={'index': 'variable'})
+            )
+            
+            # Quarterly growth calculations
+            growth_magnitude_quarterly_df = self._calculate_quarterly_growth(ts_quarterly_df, category_name, config)
+            
+            # Return all analysis results as DataFrames
+            return {
+                'selected_speeches': selected_df,
+                'ts_quarterly': ts_quarterly_df,
+                'ts_yearly': ts_yearly_df,
+                'growth_magnitude': growth_magnitude_df,
+                'growth_magnitude_quarterly': growth_magnitude_quarterly_df
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error processing Hansard data: {e}")
+            # Return empty DataFrames on error
+            return {
+                'selected_speeches': pd.DataFrame(),
+                'ts_quarterly': pd.DataFrame(),
+                'ts_yearly': pd.DataFrame(),
+                'growth_magnitude': pd.DataFrame(),
+                'growth_magnitude_quarterly': pd.DataFrame()
+            }
     
-    finally:
-        # Restore the original theme
-        alt.themes.enable(current_theme)
+    def _create_source_charts(self, analysis_results: Dict[str, pd.DataFrame], 
+                             charts_dir: Path, category_name: str, scale_factor: int) -> List[str]:
+        """Create Hansard-specific charts using discovery_utils.charts.
+        
+        Mirrors the existing _generate_charts function exactly.
+        """
+        chart_files = []
+        
+        try:
+            if not analysis_results['ts_quarterly'].empty:
+                fig = charts.ts_bar(
+                    analysis_results['ts_quarterly'],
+                    variable="speeches",
+                    variable_title="Number of speeches",
+                    time_column="quarter",
+                )
+                fig = charts.configure_plots(fig, chart_title=f"Number of speeches for {category_name}")
+                chart_file = charts_dir / f"hansard_{category_name}_quarterly_speeches.png"
+                fig.save(str(chart_file), scale_factor=scale_factor)
+                chart_files.append(str(chart_file))
+        
+        except Exception as e:
+            self.logger.error(f"Failed to generate Hansard charts: {e}")
+        
+        return chart_files
     
-    logger.info(f"Generated {len(chart_files)} Hansard charts for {category_name}")
-    return chart_files
-
-def get_quarter_from_date(date: str) -> int:
-    """Return the quarter number from a given YYYY-MM-DD date string."""
-    _date = datetime.datetime.strptime(date, "%Y-%m-%d")
-    return (_date.month-1)//3 + 1
-
-def impute_missing_quarters(df, date_col="quarter", value_col="speeches", min_quarter=None, max_quarter=None):
-    """Impute missing quarters"""
-    df[date_col] = pd.PeriodIndex(df[date_col], freq='Q')
+    def _generate_custom_stats(self, analysis_results: Dict[str, pd.DataFrame], 
+                              topic_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate Hansard-specific statistics."""
+        selected_df = analysis_results['selected_speeches']
+        
+        return {
+            'speeches_analysed': len(selected_df),
+            'unique_speakers': selected_df['speakername'].nunique() if not selected_df.empty else 0,
+            'date_range': f"{selected_df['date'].min()} to {selected_df['date'].max()}" if not selected_df.empty else "N/A"
+        }
     
-    if min_quarter is None:
-        min_quarter = df[date_col].min()
-    if max_quarter is None:
-        max_quarter = df[date_col].max()
+    # Helper methods from original implementation
     
-    full_range = pd.period_range(start=min_quarter, end=max_quarter, freq='Q')
-    
-    full_df = pd.DataFrame({date_col: full_range})
-    
-    df = full_df.merge(df, on=date_col, how='left')
-    
-    df[value_col] = df[value_col].fillna(0).astype(int)
-    
-    df[date_col] = df[date_col].astype(str)
-    df[date_col] = df[date_col].str.replace("Q", "-Q")
-    return df
-
-def impute_missing_years(df, year_col="year", value_col="speeches", min_year=None, max_year=None):
-    """Impute missing years"""
-    df[year_col] = df[year_col].astype(int)
-    
-    if min_year is None:
-        min_year = df[year_col].min()
-    if max_year is None:
-        max_year = df[year_col].max()
-    
-    full_range = range(min_year, max_year + 1)
-    
-    full_df = pd.DataFrame({year_col: list(full_range)})
-    
-    df = full_df.merge(df, on=year_col, how='left')
-    
-    df[value_col] = df[value_col].fillna(0).astype(int)
-    
-    return df
-
-def _calculate_quarterly_growth(ts_quarterly_df, category_name, config):
-    """Calculate quarterly growth analysis"""
-    if ts_quarterly_df.empty:
-        return pd.DataFrame()
-    
-    current_quarter = config.current_quarter
-    
-    previous_four_quarters = ts_quarterly_df.query("quarter < @current_quarter").sort_values("quarter").tail(4).quarter.tolist()
-    
-    if len(previous_four_quarters) < 4:
-        return pd.DataFrame()
-    
-    previous_four_quarters_mean_df = (
-        ts_quarterly_df
-        .query("quarter in @previous_four_quarters")
-        .assign(_col="previous_four_quarters")
-        .groupby("_col")
-        .agg(
-            speeches=("speeches", "mean")
+    def _get_speeches_data(self, HansardData, config) -> pd.DataFrame:
+        """Get speeches data."""
+        missions = [config.current_mission]
+        
+        speeches_df = (
+            HansardData.debates_df
+            .query(config.get_date_query_filter())
+            .merge(
+                HansardData.labelstore_df[['id', 'mission_labels', 'topic_labels']],
+                left_on='speech_id',
+                right_on='id',
+                how='left'
+            )
+            .assign(mission_labels=lambda df: df.mission_labels.apply(lambda x: x.split(",") if (type(x) is str) else []))
+            .assign(topic_labels=lambda df: df.topic_labels.apply(lambda x: x.split(",") if (type(x) is str) else []))
+            .explode("mission_labels")
+            .query("mission_labels in @missions")
+            .explode("topic_labels")
+            .assign(quarter=lambda df: df.date.apply(self._get_quarter_from_date))
+            .assign(quarter=lambda df: df.year.astype(str) + "-Q" + df.quarter.astype(str))
         )
-        .T
-        .reset_index()
-        .rename(columns={"index": "variable"})
-    )
+        
+        return speeches_df
     
-    present_quarter_df = (
-        ts_quarterly_df.query("quarter == @current_quarter")
-        .assign(_col="magnitude")
-        .groupby("_col")
-        .agg(
-            speeches=("speeches", "mean")
+    def _get_quarter_from_date(self, date):
+        """Convert date to quarter."""
+        if pd.isna(date):
+            return None
+        if isinstance(date, str):
+            date = pd.to_datetime(date)
+        return (date.month - 1) // 3 + 1
+    
+    def _impute_missing_quarters(self, df, min_quarter, max_quarter):
+        """Impute missing quarters with zero values."""
+        if df.empty:
+            return df
+        
+        # Generate all quarters in range
+        start_year, start_q = map(int, min_quarter.split('-Q'))
+        end_year, end_q = map(int, max_quarter.split('-Q'))
+        
+        all_quarters = []
+        year, quarter = start_year, start_q
+        while year < end_year or (year == end_year and quarter <= end_q):
+            all_quarters.append(f"{year}-Q{quarter}")
+            quarter += 1
+            if quarter > 4:
+                quarter = 1
+                year += 1
+        
+        # Create complete dataframe with all quarters
+        complete_df = pd.DataFrame({'quarter': all_quarters})
+        
+        # Merge with existing data, filling missing values with 0
+        result_df = complete_df.merge(df, on='quarter', how='left').fillna(0)
+        
+        return result_df
+    
+    def _impute_missing_years(self, df, min_year, max_year):
+        """Impute missing years with zero values."""
+        if df.empty:
+            return df
+        
+        # Generate all years in range
+        all_years = list(range(min_year, max_year + 1))
+        
+        # Create complete dataframe with all years
+        complete_df = pd.DataFrame({'year': all_years})
+        
+        # Merge with existing data, filling missing values with 0
+        result_df = complete_df.merge(df, on='year', how='left').fillna(0)
+        
+        return result_df
+    
+    def _calculate_quarterly_growth(self, ts_quarterly_df, category_name, config):
+        """Calculate quarterly growth analysis."""
+        if ts_quarterly_df.empty:
+            return pd.DataFrame()
+        
+        current_quarter = config.current_quarter
+        
+        previous_four_quarters = ts_quarterly_df.query("quarter < @current_quarter").sort_values("quarter").tail(4).quarter.tolist()
+        
+        if len(previous_four_quarters) < 4:
+            return pd.DataFrame()
+        
+        previous_four_quarters_mean_df = (
+            ts_quarterly_df
+            .query("quarter in @previous_four_quarters")
+            .assign(_col="previous_four_quarters")
+            .groupby("_col")
+            .agg(
+                speeches=("speeches", "mean")
+            )
+            .T
+            .reset_index()
+            .rename(columns={"index": "variable"})
         )
-        .T.reset_index().rename(columns={"index": "variable"})
-    )
-    
-    growth_magnitude_quarterly_df = (
-        previous_four_quarters_mean_df
-        .merge(present_quarter_df, on="variable", how="left")
-        .assign(growth=lambda df: (df.magnitude - df.previous_four_quarters) / df.previous_four_quarters * 100)
-        .assign(theme=category_name)
-    )
-    
-    return growth_magnitude_quarterly_df
-
-def _save_csv_files(dataframes: Dict[str, pd.DataFrame], output_dir: Path, category_name: str) -> List[str]:
-    """Save all dataframes as CSV files"""
-    csv_files = []
-    for name, df in dataframes.items():
-        if not df.empty:
-            filename = output_dir / f"hansard_{category_name}_{name}.csv"
-            df.to_csv(filename, index=False)
-            csv_files.append(str(filename))
-            logger.info(f"Saved Hansard {name}: {len(df)} rows to {filename}")
-    return csv_files 
+        
+        present_quarter_df = (
+            ts_quarterly_df.query("quarter == @current_quarter")
+            .assign(_col="magnitude")
+            .groupby("_col")
+            .agg(
+                speeches=("speeches", "mean")
+            )
+            .T.reset_index().rename(columns={"index": "variable"})
+        )
+        
+        growth_magnitude_quarterly_df = (
+            previous_four_quarters_mean_df
+            .merge(present_quarter_df, on="variable", how="left")
+            .assign(growth=lambda df: (df.magnitude - df.previous_four_quarters) / df.previous_four_quarters * 100)
+            .assign(theme=category_name)
+        )
+        
+        return growth_magnitude_quarterly_df 

@@ -14,7 +14,7 @@ from ..config_manager import get_pipeline_config
 
 logger = logging.getLogger(__name__)
 
-def produce_radar_charts(topic_results: List[Dict[str, Any]], output_dir: Path) -> Dict[str, Any]:
+def produce_radar_charts(topic_results: List[Dict[str, Any]], output_dir: Path, mission: str) -> Dict[str, Any]:
     """
     Generate cross-topic radar charts
     
@@ -34,9 +34,8 @@ def produce_radar_charts(topic_results: List[Dict[str, Any]], output_dir: Path) 
     logger.info(f"Generating cross-topic radar charts for {len(topic_results)} topics")
     
     # Get configuration
-    config = get_pipeline_config()
-    current_mission = config.current_mission
-    categories_to_show = config.categories_to_show.get(current_mission, [])
+    config = get_pipeline_config(mission)
+    categories_to_show = config.categories_to_show.get(mission, [])
     
     # Create mapping from internal topic names to display names
     topic_name_mapping = _create_topic_display_name_mapping(topic_results, config)

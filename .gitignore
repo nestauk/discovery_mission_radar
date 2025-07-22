@@ -86,6 +86,9 @@ target/
 *.db
 *.rdb
 
+# Cursor
+.cursor/
+
 # Pycharm
 .idea
 
@@ -100,6 +103,7 @@ target/
 
 # temp
 tmp/
+memory-bank/
 
 # outputs
 outputs/

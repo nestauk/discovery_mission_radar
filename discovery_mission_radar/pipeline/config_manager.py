@@ -15,17 +15,23 @@ logger = logging.getLogger(__name__)
 class PipelineConfig:
     """Manages pipeline configuration with smart defaults and date handling"""
     
-    def __init__(self, config_file: Optional[Path] = None):
+    def __init__(self, config_file: Optional[Path] = None, mission: str = "ASF"):
         """
         Initialize configuration manager
         
         Args:
             config_file: Path to pipeline.yaml config file. If None, uses default location.
+            mission: Required mission parameter.
         """
+        mission = mission.upper()
+        if mission not in ['AHL', 'ASF']:
+            raise ValueError(f"Invalid mission: {mission}. Must be one of: AHL, ASF")
+        
         if config_file is None:
             config_file = Path(__file__).parent.parent / "config" / "pipeline.yaml"
         
         self.config_file = config_file
+        self._mission = mission
         self._config = self._load_config()
         self._validate_config()
     
@@ -44,16 +50,105 @@ class PipelineConfig:
             logger.error(f"Error loading config: {e}. Using defaults.")
             return self._get_default_config()
     
+    def _validate_config(self, mission: Optional[str] = None):
+        """Validate configuration for required fields"""
+        required_sections = ['date_ranges', 'current_period', 'data_sources']
+        for section in required_sections:
+            if section not in self._config:
+                raise ValueError(f"Missing required config section: {section}")
+        
+        self._validate_google_sheets_config()
+        
+        self._validate_mission_exclusions()
+        
+        self._validate_data_sources()
+        
+        self._validate_date_ranges()
+    
+    def _validate_google_sheets_config(self):
+        """Validate Google Sheets configuration for current mission"""
+        google_sheets = self._config.get('output', {}).get('google_sheets', {})
+        
+        if google_sheets.get('enabled'):
+            mission_key = f"{self._mission.lower()}_sheet_id"
+            sheet_id = google_sheets.get(mission_key)
+            
+            if not sheet_id:
+                logger.warning(f"Google Sheets enabled but {mission_key} not configured for mission {self._mission}")
+            elif len(sheet_id) < 10:
+                logger.warning(f"Google Sheets {mission_key} appears invalid (too short): {sheet_id}")
+            else:
+                logger.info(f"Google Sheets configured for {self._mission}: {sheet_id}")
+        else:
+            logger.info(f"Google Sheets integration disabled")
+    
+    def _validate_mission_exclusions(self):
+        """Validate mission-specific exclusion lists exist and warn about coverage"""
+        data_sources = self._config.get('data_sources', {})
+        
+        for source_name, source_config in data_sources.items():
+            if 'excluded_topics' in source_config:
+                excluded_topics = source_config['excluded_topics']
+                
+                if self._mission not in excluded_topics:
+                    logger.warning(f"No exclusion list found for mission {self._mission} in {source_name} data source")
+                else:
+                    excluded_count = len(excluded_topics[self._mission])
+                    if excluded_count > 0:
+                        logger.info(f"{source_name}: {excluded_count} topics excluded for mission {self._mission}")
+    
+    def _validate_data_sources(self):
+        """Validate data source configuration and warn about potential issues"""
+        data_sources = self._config.get('data_sources', {})
+        required_sources = ['crunchbase', 'gtr', 'hansard']
+        
+        for source in required_sources:
+            if source not in data_sources:
+                logger.warning(f"Data source '{source}' not configured")
+            elif not data_sources[source].get('enabled', True):
+                logger.warning(f"Data source '{source}' is disabled")
+        
+        # Validate native categories for mission
+        crunchbase_config = data_sources.get('crunchbase', {})
+        native_categories = crunchbase_config.get('native_categories', {})
+        
+        if self._mission in native_categories:
+            native_count = len(native_categories[self._mission])
+            if native_count > 0:
+                logger.info(f"Crunchbase native categories configured for {self._mission}: {native_count} categories")
+        else:
+            logger.info(f"No Crunchbase native categories configured for mission {self._mission}")
+    
+    def _validate_date_ranges(self):
+        """Validate date range configuration"""
+        date_ranges = self._config.get('date_ranges', {})
+        
+        try:
+            start_date = date_ranges.get('data_start_date')
+            end_date = date_ranges.get('data_end_date')
+            
+            if start_date and end_date:
+                from datetime import datetime
+                start = datetime.strptime(start_date, '%Y-%m-%d')
+                end = datetime.strptime(end_date, '%Y-%m-%d')
+                
+                if start >= end:
+                    logger.warning(f"Data start date ({start_date}) is not before end date ({end_date})")
+                
+                # Check if end date is in the future (which might be intentional)
+                now = datetime.now()
+                if end > now:
+                    logger.info(f"Data end date ({end_date}) is in the future - this may be intentional for pipeline scheduling")
+                    
+        except ValueError as e:
+            logger.warning(f"Invalid date format in configuration: {e}")
+    
     def _get_default_config(self) -> Dict[str, Any]:
         """Provide sensible defaults if config file is missing"""
         current_year = datetime.now().year
         current_quarter = f"{current_year}-Q{((datetime.now().month-1)//3) + 1}"
         
         return {
-            'mission': {
-                'current_mission': 'ASF',
-                'available_missions': ['AHL', 'ASF']
-            },
             'date_ranges': {
                 'data_start_date': '2014-01-01',
                 'data_end_date': f'{current_year}-06-30',
@@ -106,7 +201,8 @@ class PipelineConfig:
                 'cache_ttl_hours': 24,
                 'google_sheets': {
                     'enabled': False,
-                    'sheet_id': '',
+                    'ahl_sheet_id': '',  # Mission-specific sheet IDs
+                    'asf_sheet_id': '',
                     'upload_aggregated_data': False
                 }
             },
@@ -116,31 +212,34 @@ class PipelineConfig:
             }
         }
     
-    def _validate_config(self):
-        """Validate configuration for required fields"""
-        required_sections = ['date_ranges', 'current_period', 'data_sources']
-        for section in required_sections:
-            if section not in self._config:
-                raise ValueError(f"Missing required config section: {section}")
-        
-        # Validate mission configuration
-        if 'mission' in self._config:
-            mission = self._config['mission'].get('current_mission')
-            if mission and mission not in ['AHL', 'ASF']:
-                raise ValueError(f"Invalid mission: {mission}. Must be one of: AHL, ASF")
-
     # Mission properties
     @property
     def current_mission(self) -> str:
-        """Get the current mission (AHL or ASF)"""
-        return self._config.get('mission', {}).get('current_mission', 'ASF')
+        """Get the current mission"""
+        return self._mission
+    
+    @property
+    def google_sheets_id(self) -> str:
+        """Get Google Sheets ID for current mission"""
+        mission_key = f"{self._mission.lower()}_sheet_id"
+        return self._config.get('output', {}).get('google_sheets', {}).get(mission_key, '')
+    
+    @property
+    def google_sheets_enabled(self) -> bool:
+        """Check if Google Sheets integration is enabled"""
+        return self._config.get('output', {}).get('google_sheets', {}).get('enabled', False)
+    
+    @property
+    def upload_aggregated_data(self) -> bool:
+        """Check if aggregated data upload is enabled"""
+        return self._config.get('output', {}).get('google_sheets', {}).get('upload_aggregated_data', False)
     
     @property
     def categories_to_show(self) -> Dict[str, List[str]]:
         """Get categories to show in cross-topic charts by mission"""
         return self._config.get('categories_to_show', {
-            'ASF': ["Low-carbon heating", "Wind", "Solar", "Hydrogen energy", "Energy efficiency", "CCUS"],
-            'AHL': ["Alternative proteins", "Personalised nutrition", "Food technology", "Health monitoring", "Precision agriculture", "Food waste reduction"]
+            'ASF': ["heat_pumps", "biomass_heating", "wind", "solar", "hydrogen_energy", "energy_efficiency", "ccus"],  
+            'AHL': ["reformulation_fiber", "reformulation_salt", "reformulation_fat", "reformulation_general", "reformulation_sugar"]
         })
     
     def get_available_missions(self) -> List[str]:
@@ -264,22 +363,6 @@ class PipelineConfig:
         """Cache TTL in hours"""
         return self._config['output']['cache_ttl_hours']
     
-    # Google Sheets properties
-    @property
-    def google_sheets_enabled(self) -> bool:
-        """Whether Google Sheets integration is enabled"""
-        return self._config['output'].get('google_sheets', {}).get('enabled', False)
-    
-    @property
-    def google_sheets_id(self) -> str:
-        """Google Sheets ID for uploading aggregated data"""
-        return self._config['output'].get('google_sheets', {}).get('sheet_id', '')
-    
-    @property
-    def upload_aggregated_data(self) -> bool:
-        """Whether to upload aggregated data to Google Sheets"""
-        return self._config['output'].get('google_sheets', {}).get('upload_aggregated_data', False)
-    
     # Execution properties
     @property
     def log_level(self) -> str:
@@ -309,17 +392,11 @@ class PipelineConfig:
         """Export configuration as dictionary"""
         return self._config.copy()
 
-# Global config instance
-_config_instance = None
+# Global config functions - mission now required
+def get_pipeline_config(mission: str) -> PipelineConfig:
+    """Get pipeline configuration instance for specific mission"""
+    return PipelineConfig(mission=mission)
 
-def get_pipeline_config() -> PipelineConfig:
-    """Get global pipeline configuration instance"""
-    global _config_instance
-    if _config_instance is None:
-        _config_instance = PipelineConfig()
-    return _config_instance
-
-def reload_config(config_file: Optional[Path] = None):
-    """Reload configuration from file"""
-    global _config_instance
-    _config_instance = PipelineConfig(config_file) 
+def reload_config(config_file: Optional[Path] = None, mission: str = "ASF") -> PipelineConfig:
+    """Reload configuration from file with mission parameter"""
+    return PipelineConfig(config_file, mission) 
