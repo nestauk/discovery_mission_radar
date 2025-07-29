@@ -261,3 +261,29 @@ class AnalysisUtils:
             summary_df = pd.concat([summary_df, pd.DataFrame([totals])], ignore_index=True)
         
         return summary_df 
+
+    @staticmethod
+    def country_to_region(country_code: str) -> str:
+        """Map a country code to its region using a predefined mapping."""
+        REGION_TO_COUNTRIES = {
+            "North America + Australia": ["USA", "CAN", "AUS", "NZL"],
+            "South + Central America": [
+                "VEN", "ARG", "BRA", "CHL", "COL", "PER", "URY", "PRY", "ECU", "BOL", "GUY", "SUR", "MEX", "CRI", "SLV", "GTM", "HND", "PAN", "NIC",
+            ],
+            "Europe": [
+                "IRL", "LUX", "CHE", "ESP", "DEU", "FRA", "FIN", "SWE", "NLD", "BEL", "DNK", "CZE", "POL", "EST", "AUT", "ITA", "ROU", "CYP", "NOR", "PRT", "BGR", "BLR", "SVN", "ARM", "HUN", "ISL", "LVA", "LTU", "HRV", "MKD", "BIH", "SRB", "SVK", "GEO", "MDA", "ALB", "SMR", "AND", "GIB", "FRO", "LIE", "IMN", "GGY", "JEY", "ALA",
+            ],
+            "UK": ["GBR"],
+            "Asia": [
+                "IND", "HKG", "ISR", "RUS", "KOR", "SGP", "JPN", "ARE", "CHN", "PHL", "IDN", "THA", "TUR", "MYS", "TWN", "PAK", "LBN", "ARM", "BGD", "KWT", "VNM", "MDV", "JOR", "LKA", "IRN", "SYR", "KAZ", "UZB", "IRQ", "OMN", "PSE", "TJK", "BTN", "TLS", "MAC", "MMR", "MNG", "KHM", "LAO", "BRN",
+            ],
+            "Africa": [
+                "ZAF", "MUS", "EGY", "GHA", "KEN", "NGA", "MAR", "CIV", "ETH", "TUN", "MOZ", "UGA", "SEN", "ZWE", "RWA", "SDN",
+            ],
+            "Middle East": ["SAU", "ARE", "KWT", "QAT", "OMN", "IRQ", "IRN", "SYR", "JOR", "LBN", "ISR", "YEM"],
+            "Rest of the World": [None, "BMU", "TTO", "GLP", "CYM", "IMN"],
+        }
+        for region, countries in REGION_TO_COUNTRIES.items():
+            if country_code in countries:
+                return region
+        return "Rest of the World" 

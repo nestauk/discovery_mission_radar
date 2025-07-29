@@ -11,6 +11,7 @@ import altair as alt
 
 from .base import BaseAnalysisModule
 from ..config_manager import get_pipeline_config
+from .utils import AnalysisUtils
 
 from discovery_utils.getters import crunchbase as cb
 from discovery_utils.utils import analysis_crunchbase, analysis, charts
@@ -38,6 +39,53 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
         """Create default CrunchbaseGetter instance."""
         return cb.CrunchbaseGetter()
     
+    def _produce_geographical_breakdowns(self, funding_rounds_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
+        """
+        Produce region/country breakdowns and summary tables for investment and round counts.
+        Returns a dict of DataFrames keyed by descriptive names.
+        """
+        if funding_rounds_df.empty:
+            return {}
+
+        funding_rounds_df = funding_rounds_df.copy()
+        funding_rounds_df['region'] = funding_rounds_df['country_code'].map(AnalysisUtils.country_to_region)
+        funding_rounds_df['stage'] = funding_rounds_df['investment_type'].map(self.investment_type_to_stage)
+        funding_rounds_df['year'] = pd.to_datetime(funding_rounds_df['announced_on']).dt.year
+        funding_rounds_df['gbp_m'] = funding_rounds_df['raised_amount_gbp'] / 1_000_000
+
+        filtered = funding_rounds_df.query("2020 <= year <= 2024 and stage in ['early_stage', 'growth_stage']")
+
+        region_stage = (
+            filtered.groupby(['region', 'stage'], as_index=False)
+            .agg(gbp=('raised_amount_gbp', 'sum'))
+            .assign(gbp_m=lambda d: d['gbp'] / 1_000_000)
+        )
+
+        region_stage_counts = (
+            filtered.groupby(['region', 'stage'])
+            .size()
+            .reset_index(name='count')
+        )
+
+        country_stage = (
+            filtered.groupby(['country_code', 'stage'], as_index=False)
+            .agg(gbp=('raised_amount_gbp', 'sum'))
+            .assign(gbp_m=lambda d: d['gbp'] / 1_000_000)
+        )
+
+        country_stage_counts = (
+            filtered.groupby(['country_code', 'stage'])
+            .size()
+            .reset_index(name='count')
+        )
+
+        return {
+            'geo_region_stage': region_stage,
+            'geo_region_counts': region_stage_counts,
+            'geo_country_stage': country_stage,
+            'geo_country_counts': country_stage_counts,
+        }
+
     def _process_topic_data(self, topic_data: Dict[str, Any], getter: cb.CrunchbaseGetter) -> Dict[str, pd.DataFrame]:
         """Process Crunchbase topic data using existing discovery_utils analysis functions.
         
@@ -154,9 +202,12 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
         # IPOs and acquisitions
         ipos_df = getter.ipos.query("org_id in @matching_ids")
         acquisitions_df = getter.acquisitions.query("acquiree_id in @matching_ids")
-        
+
+        # Geographical breakdowns
+        geo_results = self._produce_geographical_breakdowns(funding_rounds_df)
+
         # Return all analysis results as DataFrames
-        return {
+        results = {
             'matching_orgs': matchings_orgs_df,
             'funding_rounds': funding_rounds_df,
             'ts_yearly': ts_df,
@@ -171,17 +222,15 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
             'aggregated_funding_types_quarterly': aggregated_funding_types_quarterly_df,
             'aggregated_funding_types_quarterly_startup': aggregated_funding_types_quarterly_startup_df,
             'ipos': ipos_df,
-            'acquisitions': acquisitions_df
+            'acquisitions': acquisitions_df,
         }
+        results.update(geo_results)
+        return results
     
     def _create_source_charts(self, analysis_results: Dict[str, pd.DataFrame], 
                              charts_dir: Path, category_name: str, scale_factor: int) -> List[str]:
-        """Create Crunchbase-specific charts using discovery_utils.charts.
-        
-        Mirrors the existing _generate_charts function exactly.
-        """
+        """Create Crunchbase-specific chartsz."""
         chart_files = []
-        
         try:
             # Yearly charts
             if not analysis_results['ts_yearly'].empty:
@@ -196,7 +245,6 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
                 chart_file = charts_dir / f"{category_name}_raised_amount.png"
                 fig.save(str(chart_file), scale_factor=scale_factor)
                 chart_files.append(str(chart_file))
-                
                 # Number of funding rounds
                 fig = charts.ts_bar(
                     analysis_results['ts_yearly'],
@@ -208,7 +256,6 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
                 chart_file = charts_dir / f"{category_name}_n_rounds.png"
                 fig.save(str(chart_file), scale_factor=scale_factor)
                 chart_files.append(str(chart_file))
-            
             # Quarterly charts
             if not analysis_results['ts_quarterly'].empty:
                 fig = charts.ts_bar(
@@ -222,7 +269,6 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
                 chart_file = charts_dir / f"{category_name}_raised_amount_quarterly.png"
                 fig.save(str(chart_file), scale_factor=scale_factor)
                 chart_files.append(str(chart_file))
-            
             # Startup-focused charts
             if not analysis_results['ts_startup_yearly'].empty:
                 fig = charts.ts_bar(
@@ -274,7 +320,11 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
                 chart_file = charts_dir / f"{category_name}_investment_breakdown_quarterly.png"
                 fig.save(str(chart_file), scale_factor=scale_factor)
                 chart_files.append(str(chart_file))
-        
+
+            geo_keys = ['geo_region_stage', 'geo_region_counts', 'geo_country_stage', 'geo_country_counts']
+            geo_data = {k: analysis_results[k] for k in geo_keys if k in analysis_results}
+            if geo_data:
+                chart_files += self._plot_geographical_charts(geo_data, charts_dir, category_name)
         except Exception as e:
             self.logger.error(f"Failed to generate Crunchbase charts: {e}")
         
@@ -384,3 +434,141 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
         )
         
         return aggregated_df 
+
+    @staticmethod
+    def investment_type_to_stage(investment_type: str) -> str:
+        """Map an investment type to its stage."""
+        INVESTMENT_STAGES = {
+            "early_stage": [
+                "pre_seed", "seed", "angel", "series_a", "series_b", "convertible_note",
+                "equity_crowdfunding", "product_crowdfunding", "grant", "non_equity_assistance", "initial_coin_offering",
+            ],
+            "growth_stage": ["series_c", "series_d", "series_e", "series_f", "series_g", "series_h", "series_i", "series_j"],
+            "late_stage": ["private_equity", "post_ipo_equity", "post_ipo_debt", "post_ipo_secondary", "secondary_market"],
+            "other": ["corporate_round", "debt_financing"],
+            "uncategorized": ["series_unknown", "undisclosed"],
+        }
+        for stage, types in INVESTMENT_STAGES.items():
+            if investment_type in types:
+                return stage
+        return "uncategorized"
+
+    @staticmethod
+    def get_top_european_countries(country_stage_df: pd.DataFrame, top_n: int = 10) -> list:
+        """Return top N European country codes by total investment, always including 'GBR'."""
+        EUROPEAN_COUNTRIES = [
+            "IRL", "LUX", "CHE", "ESP", "DEU", "FRA", "FIN", "SWE", "NLD", "BEL", "DNK", "CZE", "POL", "EST", "AUT", "ITA", "ROU", "CYP", "NOR", "PRT", "BGR", "BLR", "SVN", "ARM", "HUN", "ISL", "LVA", "LTU", "HRV", "MKD", "BIH", "SRB", "SVK", "GEO", "MDA", "ALB", "SMR", "AND", "GIB", "FRO", "LIE", "IMN", "GGY", "JEY", "ALA",
+        ]
+        european_data = (
+            country_stage_df
+            .query("country_code in @EUROPEAN_COUNTRIES")
+            .groupby("country_code")
+            .agg(total_gbp_m=("gbp_m", "sum"))
+            .sort_values("total_gbp_m", ascending=False)
+            .head(top_n)
+        )
+        top_countries = european_data.index.tolist()
+        if "GBR" not in top_countries:
+            top_countries.append("GBR")
+        return top_countries 
+
+    def _plot_geographical_charts(self, geo_data: Dict[str, pd.DataFrame], charts_dir: Path, category_name: str) -> List[str]:
+        import altair as alt
+        chart_files = []
+        scale_factor = 2
+        # Region investment bar chart
+        if 'geo_region_stage' in geo_data and not geo_data['geo_region_stage'].empty:
+            df = geo_data['geo_region_stage']
+            chart = (
+                alt.Chart(df)
+                .mark_bar()
+                .encode(
+                    x=alt.X('region:N', title='Region', sort='-y'),
+                    y=alt.Y('gbp_m:Q', title='Investment (£ millions)', stack='zero'),
+                    color=alt.Color('stage:N', scale=alt.Scale(domain=['early_stage', 'growth_stage'], range=['#2ea590', 'blue']), title='Stage'),
+                    order=alt.Order('stage', sort='ascending')
+                )
+                .properties(
+                    title=f"Investment by region ({category_name})",
+                    width=500,
+                    height=300
+                )
+            )
+            chart_file = charts_dir / f"{category_name}_geo_region_investment.png"
+            chart.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+        # Region round count bar chart
+        if 'geo_region_counts' in geo_data and not geo_data['geo_region_counts'].empty:
+            df = geo_data['geo_region_counts']
+            chart = (
+                alt.Chart(df)
+                .mark_bar()
+                .encode(
+                    x=alt.X('region:N', title='Region', sort='-y'),
+                    y=alt.Y('count:Q', title='Count of funding rounds', stack='zero'),
+                    color=alt.Color('stage:N', scale=alt.Scale(domain=['early_stage', 'growth_stage'], range=['#2ea590', 'blue']), title='Stage'),
+                    order=alt.Order('stage', sort='ascending')
+                )
+                .properties(
+                    title=f"Number of funding rounds by region ({category_name})",
+                    width=500,
+                    height=300
+                )
+            )
+            chart_file = charts_dir / f"{category_name}_geo_region_counts.png"
+            chart.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+        # Country investment bar chart (top 10 by early stage)
+        if 'geo_country_stage' in geo_data and not geo_data['geo_country_stage'].empty:
+            top_countries = self.get_top_european_countries(geo_data['geo_country_stage'])
+            df = geo_data['geo_country_stage'].query("country_code in @top_countries")
+            chart = (
+                alt.Chart(df)
+                .mark_bar()
+                .encode(
+                    x=alt.X('country_code:N', title='Country', sort=top_countries),
+                    y=alt.Y('gbp_m:Q', title='Investment (£ millions)', stack='zero'),
+                    color=alt.Color('stage:N', scale=alt.Scale(domain=['early_stage', 'growth_stage'], range=['#2ea590', 'blue']), title='Stage'),
+                    order=alt.Order('stage', sort='ascending')
+                )
+                .properties(
+                    title=f"Investment by country (top European, {category_name})",
+                    width=600,
+                    height=300
+                )
+            )
+            chart_file = charts_dir / f"{category_name}_geo_country_investment.png"
+            chart.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+        # Country round count bar chart (top 10 by early stage)
+        if 'geo_country_counts' in geo_data and not geo_data['geo_country_counts'].empty:
+            top_countries = self.get_top_european_countries(geo_data['geo_country_counts'])
+            df = geo_data['geo_country_counts'].query("country_code in @top_countries")
+            chart = (
+                alt.Chart(df)
+                .mark_bar()
+                .encode(
+                    x=alt.X('country_code:N', title='Country', sort=top_countries),
+                    y=alt.Y('count:Q', title='Count of funding rounds', stack='zero'),
+                    color=alt.Color('stage:N', scale=alt.Scale(domain=['early_stage', 'growth_stage'], range=['#2ea590', 'blue']), title='Stage'),
+                    order=alt.Order('stage', sort='ascending')
+                )
+                .properties(
+                    title=f"Number of funding rounds by country (top European, {category_name})",
+                    width=600,
+                    height=300
+                )
+            )
+            chart_file = charts_dir / f"{category_name}_geo_country_counts.png"
+            chart.save(str(chart_file), scale_factor=scale_factor)
+            chart_files.append(str(chart_file))
+        return chart_files
+
+    def _export_geographical_csvs(self, geo_data: Dict[str, pd.DataFrame], csv_dir: Path, category_name: str) -> List[str]:
+        csv_files = []
+        for key, df in geo_data.items():
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                file_path = csv_dir / f"{category_name}_{key}.csv"
+                df.to_csv(file_path, index=False)
+                csv_files.append(str(file_path))
+        return csv_files 
