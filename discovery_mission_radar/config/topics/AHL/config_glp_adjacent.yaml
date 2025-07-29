@@ -1,0 +1,51 @@
+---
+search_recipe:
+  category_name: "GLP-1 Adjacent Services"
+
+  scope_statements:
+    - "Digital health platforms, including telehealth and online pharmacies, that facilitate the prescription, delivery, and management of weight-loss medications."
+    - "Companion apps and digital coaching services designed to support patients taking GLP-1 medications by helping with treatment adherence, side-effect management, nutrition, or maintaining muscle mass."
+    - "Diagnostic or monitoring tools specifically marketed for tracking the physiological effects or progress of patients on anti-obesity drug therapies."
+    - "Excludes companies whose primary focus is the pre-clinical or clinical development (R&D) of the pharmaceutical drugs themselves."
+
+  keyword_sets:
+    - set_name: "GLP-1 medication keywords"
+      keywords:
+        - "GLP-1"
+        - "glp-1"
+        - "glp 1"
+        - "semaglutide"
+        - "ozempic"
+        - "wegovy"
+        - "mounjaro"
+        - "tirzepatide"
+        - "liraglutide"
+        - "dulaglutide"
+        - "retatrutide"
+        - "cagrisema"
+        - "amylin"
+        - "amylin"
+        - "GIP"
+        - "tri-agonist"
+        - "glucagon-like peptide"
+        - "glucagon like peptide"
+        - "weight loss medication"
+        - "weight loss medicine"
+        - "weight loss drug"
+        - "anti-obesity medication"
+
+    - set_name: "Service & Support Context"
+      keywords:
+        - "telehealth"
+        - "telemedicine"
+        - "online pharmacy"
+        - "digital clinic"
+        - "companion app"
+        - "patient support programme"
+        - "digital health"
+        - "health coaching"
+        - "wellness coaching"
+        - "medication adherence"
+        - "treatment adherence"
+        - "side effect management"
+

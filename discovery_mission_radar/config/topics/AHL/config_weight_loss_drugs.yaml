@@ -3,13 +3,11 @@ search_recipe:
   category_name: "Weight loss drugs"
 
   scope_statements:
-    - "GLP-1 medication delivery, monitoring, and optimization technologies"
-    - "Digital health solutions for GLP-1 users including adherence, side effects, and lifestyle support"
-    - "Weight management platforms and tools specifically designed for GLP-1 medication users"
-    - "Healthcare technologies that enhance GLP-1 treatment outcomes and patient experience"
-    - "Innovation in GLP-1 drug development, delivery methods, and personalized dosing"
-    - "Digital therapeutics and companion apps for GLP-1 medication management"
-    - "Telemedicine and remote monitoring solutions for GLP-1 therapy patients"
+    - "Pharmaceutical and biotechnology companies engaged in the research, discovery, and clinical development of therapeutic drugs for obesity and metabolic conditions."
+    - "Pre-clinical and clinical trials for novel weight-loss medications, including GLP-1 agonists, dual-agonists, or other metabolic pathways."
+    - "Organisations focused on the pharmacology and development of next-generation anti-obesity medications."
+    - "Venture or research funding directed specifically at biopharmaceutical firms for the purpose of developing new weight management therapeutics."
+
 
   keyword_sets:
     - set_name: "GLP-1 medication keywords"
@@ -24,8 +22,15 @@ search_recipe:
         - "tirzepatide"
         - "liraglutide"
         - "dulaglutide"
+        - "retatrutide"
+        - "cagrisema"
+        - "amylin"
+        - "amylin"
+        - "GIP"
+        - "tri-agonist"
         - "glucagon-like peptide"
         - "glucagon like peptide"
         - "weight loss medication"
         - "weight loss medicine"
         - "weight loss drug"
+        - "anti-obesity medication"

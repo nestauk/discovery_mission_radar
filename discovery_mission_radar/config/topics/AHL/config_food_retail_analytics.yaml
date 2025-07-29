@@ -1,0 +1,44 @@
+---
+search_recipe:
+  category_name: "Food Retail Analytics"
+
+  scope_statements:
+    - "Data analytics and business intelligence platforms designed specifically for the grocery retail and CPG (Consumer Packaged Goods) sectors."
+    - "Software that enables supermarkets and food retailers to track, analyze, and report on the nutritional profile of their sales data (e.g., HFSS regulations)."
+    - "Platforms providing consumer behaviour analytics and insights related to food purchasing habits, health trends, and responses to in-store promotions."
+    - "Excludes general e-commerce analytics platforms not specifically tailored to the food and grocery sector."
+    - "Excludes supply chain management, inventory, and logistics software."
+
+  keyword_sets:
+    - set_name: "Retail Context"
+      keywords:
+        - "retail"
+        - "retailer"
+        - "supermarket"
+        - "grocery"
+        - "grocer"
+        - "cpg"
+        - "fmcg"
+        - "in-store"
+        - "checkout"
+
+    - set_name: "Analytics & Data Context"
+      keywords:
+        - "analytics"
+        - "insights"
+        - "data platform"
+        - "consumer data"
+        - "sales data"
+        - "basket analysis"
+        - "point of sale"
+        - "pos data"
+        - "business intelligence"
+        - "consumer intelligence"
+
+    - set_name: "Food & Health Specificity"
+      keywords:
+        - "nutritional data"
+        - "health trends"
+        - "food sales"
+        - "hfss"
+        - "shopper behaviour"

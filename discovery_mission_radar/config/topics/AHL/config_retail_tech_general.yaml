@@ -1,0 +1,32 @@
+---
+search_recipe:
+  category_name: "General Retail Analytics"
+
+  scope_statements:
+    - "Business intelligence (BI) and data analytics platforms for the general retail sector."
+    - "Software for analysing broad consumer behaviour, shopper journeys, basket data, and customer loyalty programs."
+    - "Platforms that provide retailers with insights on store performance, customer segmentation, and marketing effectiveness."
+    - "Excludes platforms focused specifically on the analysis of food sales data or HFSS nutritional tracking."
+    - "Excludes physical in-store hardware, robotics, automation, and supply chain management software."
+
+  keyword_sets:
+    - set_name: "Retail Context"
+      keywords:
+        - "retail"
+        - "retailer"
+        - "supermarket"
+        - "in-store"
+        - "point of sale"
+        - "e-commerce"
+        - "shopper"
+
+    - set_name: "Analytics & Data Context"
+      keywords:
+        - "retail analytics"
+        - "consumer intelligence"
+        - "shopper data"
+        - "loyalty data"
+        - "basket data"
+        - "retail data"
+        - "business intelligence"
+        - "customer segmentation"
