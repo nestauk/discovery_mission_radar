@@ -425,7 +425,7 @@ Selective Processing:
     
     args = parser.parse_args()
     
-    # Normalize mission to uppercase for internal use
+    # Normalise mission to uppercase for internal use
     mission = args.mission.upper()
     
     # Setup logging

@@ -163,7 +163,6 @@ categories_to_show:
 output:
   base_dir: "./outputs"
   cache_enabled: true
-  cache_ttl_hours: 48
   
   # Google Sheets integration
   google_sheets:

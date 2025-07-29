@@ -198,7 +198,6 @@ class PipelineConfig:
             'output': {
                 'base_dir': './outputs',
                 'cache_enabled': True,
-                'cache_ttl_hours': 24,
                 'google_sheets': {
                     'enabled': False,
                     'ahl_sheet_id': '',  # Mission-specific sheet IDs
@@ -357,11 +356,6 @@ class PipelineConfig:
     def cache_enabled(self) -> bool:
         """Whether caching is enabled"""
         return self._config['output']['cache_enabled']
-    
-    @property
-    def cache_ttl_hours(self) -> int:
-        """Cache TTL in hours"""
-        return self._config['output']['cache_ttl_hours']
     
     # Execution properties
     @property
