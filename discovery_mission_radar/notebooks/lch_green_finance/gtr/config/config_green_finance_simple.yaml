@@ -1,3 +1,4 @@
+
 search_recipe:
   scope_statements:
     - "Affordable green finance for residential renewable energy and home energy improvements"
@@ -13,6 +14,7 @@ search_recipe:
     - "Climate aligned capital for residential and SME decarbonisation"
     - "Designing new green finance mechanisms for businesses and supply chain partners"
     - "Regulatory barriers and enablers for affordable green finance"
+    - "Green fintech company that specializes in financing renewable energy solutions such as photovoltaic systems, energy storage, and heat pumps"        
 
   keyword_sets:
     - set_name: "Finance keywords"
@@ -43,3 +45,4 @@ search_recipe:
         - "zero upfront cost"
         - "business finance"
         - "enterprise lending"
+        - "fintech"
