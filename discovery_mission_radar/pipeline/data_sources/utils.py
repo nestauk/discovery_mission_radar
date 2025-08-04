@@ -137,16 +137,17 @@ async def run_llm_relevance_check_async(
     topic_name: str,
     source_name: str,
     mission: str,
+    pipeline_config: Optional[Dict] = None,
     id_column: str = 'id',
     text_column: str = 'text',
     custom_instructions: str = ""
 ) -> List[str]:
-    """Run async LLM relevance check with S3 and local caching.
+    """Run async LLM relevance check with S3 and local caching, with optional Argilla integration.
     
     This function provides a common interface for LLM relevance checking
     across all data sources with intelligent caching to avoid re-processing
     items that have already been checked. Uses S3 for persistent storage
-    with local fallback.
+    with local fallback. Integrates with Argilla for manual review if enabled.
     
     Args:
         items_df: DataFrame containing items to check (must have id_column)
@@ -155,6 +156,7 @@ async def run_llm_relevance_check_async(
         topic_name: Name of the topic being processed
         source_name: Name of the data source (for cache file naming)
         mission: Current mission (AHL/ASF)
+        pipeline_config: Pipeline configuration
         id_column: Name of the ID column in items_df
         text_column: Name of the text column in items_df  
         custom_instructions: Additional instructions for the LLM
@@ -176,6 +178,28 @@ async def run_llm_relevance_check_async(
         logger.info(f"Using local {source_name} cache for {topic_name}")
     else:
         logger.info(f"No existing {source_name} cache found for {topic_name}")
+    
+    # Argilla: Import completed manual reviews and apply overrides
+    if pipeline_config and pipeline_config.get('argilla', {}).get('enabled', False):
+        try:
+            from .argilla import import_from_argilla, apply_manual_overrides
+            
+            quarter = pipeline_config.get('current_period', {}).get('quarter', '2025-Q2')
+            argilla_config = pipeline_config['argilla']
+            
+            logger.info(f"Argilla integration enabled - importing manual reviews for {topic_name}")
+            manual_reviews = import_from_argilla(topic_name, quarter, mission, argilla_config, source_name)
+            
+            if manual_reviews:
+                logger.info(f"Found {len(manual_reviews)} completed manual reviews for {topic_name}")
+                apply_manual_overrides(relevance_cache_file, manual_reviews)
+            else:
+                logger.info(f"No completed manual reviews found for {topic_name}")
+                
+        except ImportError:
+            logger.warning("Argilla package not available - skipping manual review import")
+        except Exception as e:
+            logger.warning(f"Failed to import manual reviews from Argilla: {e}")
     
     # Get all current item IDs that need to be checked
     current_item_ids = set(items_df[id_column].tolist())
@@ -247,6 +271,55 @@ async def run_llm_relevance_check_async(
             for entity_id, is_relevant in existing_results.items()
         ])
     
+    # Argilla: Sample and export new entities for manual review
+    if pipeline_config and pipeline_config.get('argilla', {}).get('enabled', False) and new_ids_to_check:
+        try:
+            from .argilla import get_entities_to_sample, export_to_argilla
+            
+            quarter = pipeline_config.get('current_period', {}).get('quarter', '2025-Q2')
+            argilla_config = pipeline_config['argilla']
+            sample_size = argilla_config.get('sampling', {}).get('base_sample_size', 10)
+            
+            logger.info(f"Argilla sampling enabled - selecting entities for manual review")
+            
+            # Get entities to sample from the newly processed ones
+            new_items_with_results = items_df[items_df[id_column].isin(new_ids_to_check)].copy()
+            new_results_df = relevant_check_df[relevant_check_df['id'].isin(new_ids_to_check)]
+            
+            # Merge LLM results with entity data for sampling
+            entities_for_sampling = new_items_with_results.merge(
+                new_results_df[['id', 'is_relevant', 'explanation']], 
+                left_on=id_column, 
+                right_on='id', 
+                how='inner'
+            )
+            
+            if len(entities_for_sampling) > 0:
+                entities_to_sample = await get_entities_to_sample(
+                    topic_name, quarter, mission, entities_for_sampling, 
+                    sample_size, cache_dir, s3_cache, source_name
+                )
+                
+                if entities_to_sample:
+                    export_success = export_to_argilla(
+                        entities_to_sample, entities_for_sampling, 
+                        topic_name, quarter, mission, argilla_config, source_name
+                    )
+                    
+                    if export_success:
+                        logger.info(f"Exported {len(entities_to_sample)} entities to Argilla for {topic_name}")
+                    else:
+                        logger.warning(f"Failed to export entities to Argilla")
+                else:
+                    logger.debug(f"No new entities selected for sampling (avoiding duplicates)")
+            else:
+                logger.debug(f"No entities available for Argilla sampling")
+                
+        except ImportError:
+            logger.warning("Argilla package not available - skipping sampling and export")
+        except Exception as e:
+            logger.warning(f"Failed to sample and export to Argilla: {e}")
+    
     # Merge results and filter for relevant items
     relevant_checked_df = (
         items_df
@@ -269,6 +342,7 @@ def run_llm_relevance_check(
     topic_name: str,
     source_name: str,
     mission: str,
+    pipeline_config: Optional[Dict] = None,
     id_column: str = 'id',
     text_column: str = 'text',
     custom_instructions: str = ""
@@ -282,6 +356,7 @@ def run_llm_relevance_check(
         topic_name: Name of the topic being processed
         source_name: Name of the data source
         mission: Current mission (AHL/ASF)
+        pipeline_config: Pipeline configuration for Argilla integration (optional)
         id_column: Name of the ID column in items_df
         text_column: Name of the text column in items_df
         custom_instructions: Additional instructions for the LLM
@@ -291,7 +366,7 @@ def run_llm_relevance_check(
     """
     return asyncio.run(run_llm_relevance_check_async(
         items_df, config, cache_dir, topic_name, source_name, mission,
-        id_column, text_column, custom_instructions
+        pipeline_config, id_column, text_column, custom_instructions
     ))
 
 

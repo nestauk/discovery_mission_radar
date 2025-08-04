@@ -43,13 +43,13 @@ class CrunchbaseDataSource(BaseDataSource[crunchbase.CrunchbaseGetter]):
         self.logger.info(f"Found {len(companies_df)} companies for category '{category_name}'")
         
         # Run LLM relevance check with mission context
-        relevant_ids = self._run_relevance_check(companies_df, config, cache_dir, topic_name, getter, mission)
+        relevant_ids = self._run_relevance_check(companies_df, config, cache_dir, topic_name, getter, mission, **kwargs)
         
         return relevant_ids, len(companies_df)
     
     def _run_relevance_check(self, companies_df: pd.DataFrame, config: Dict, 
                             cache_dir: Path, topic_name: str, cb_getter: crunchbase.CrunchbaseGetter,
-                            mission: str = None) -> List[str]:
+                            mission: str = None, **kwargs) -> List[str]:
         """Run LLM relevance check for Crunchbase companies."""
         
         # Get organisation text for relevance checking
@@ -64,7 +64,7 @@ class CrunchbaseDataSource(BaseDataSource[crunchbase.CrunchbaseGetter]):
         # Get mission-aware custom instructions
         custom_instructions = self._get_mission_specific_instructions(mission or "Unknown")
         
-        # Use shared LLM relevance check function with mission context
+        # Use shared LLM relevance check function with mission context and pipeline config for Argilla
         return run_llm_relevance_check(
             companies_with_text,
             config,
@@ -72,6 +72,7 @@ class CrunchbaseDataSource(BaseDataSource[crunchbase.CrunchbaseGetter]):
             topic_name,
             "crunchbase",
             mission or "Unknown",
+            pipeline_config=kwargs.get('pipeline_config'),
             custom_instructions=custom_instructions
         )
     

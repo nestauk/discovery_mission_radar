@@ -8,8 +8,7 @@ from typing import Dict, Any, List
 import logging
 import yaml
 
-from discovery_utils.getters import crunchbase as cb_getters, gtr as gtr_getters
-from discovery_utils.synthesis.policy import policy_update
+from discovery_utils.getters import crunchbase as cb_getters, gtr as gtr_getters, hansard as hansard_getters
 from discovery_mission_radar.pipeline.data_sources import CrunchbaseDataSource, GtrDataSource, HansardDataSource
 from discovery_mission_radar.pipeline.analysis import (
     CrunchbaseAnalysisModule, GtrAnalysisModule, HansardAnalysisModule
@@ -80,7 +79,7 @@ class MissionRadarRunner:
             
         if self.pipeline_config.is_source_enabled('hansard'):
             logger.info("Initialising Hansard getter")
-            self.getters['hansard'] = policy_update.HansardData()
+            self.getters['hansard'] = hansard_getters.HansardGetter()
         
         logger.info("All getters initialized successfully")
     
@@ -140,7 +139,7 @@ class MissionRadarRunner:
                 logger.info("Processing Crunchbase data source")
                 cb_data = self.data_sources['crunchbase'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['crunchbase'], 
-                    mission=self.mission
+                    mission=self.mission, pipeline_config=self.pipeline_config.to_dict()
                 )
                 cb_results = self.analysis_modules['crunchbase'].analyse_topic(
                     cb_data, topic_output_dir / "crunchbase", self.getters['crunchbase']
@@ -156,7 +155,7 @@ class MissionRadarRunner:
                 logger.info("Processing GTR data source")
                 gtr_data = self.data_sources['gtr'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['gtr'],
-                    mission=self.mission
+                    mission=self.mission, pipeline_config=self.pipeline_config.to_dict()
                 )
                 gtr_results = self.analysis_modules['gtr'].analyse_topic(
                     gtr_data, topic_output_dir / "gtr", self.getters['gtr']
@@ -172,7 +171,7 @@ class MissionRadarRunner:
                 logger.info("Processing Hansard data source")
                 hansard_data = self.data_sources['hansard'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
-                    use_llm_check=False, mission=self.mission
+                    use_llm_check=False, mission=self.mission, pipeline_config=self.pipeline_config.to_dict()
                 )
                 hansard_results = self.analysis_modules['hansard'].analyse_topic(
                     hansard_data, topic_output_dir / "hansard", self.getters['hansard']

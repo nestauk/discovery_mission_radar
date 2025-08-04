@@ -14,6 +14,7 @@ license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "argilla>=2.8.0",
     "black>=22.0.0",
     "click>=8.0.0",
     "discovery-utils",

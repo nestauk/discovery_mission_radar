@@ -1,7 +1,6 @@
 # Mission Radar Pipeline Configuration
 # This file controls the overall pipeline execution settings
 
-
 # Date range configuration
 date_ranges:
   # Data fetching ranges
@@ -157,7 +156,6 @@ categories_to_show:
 output:
   base_dir: "./outputs"
   cache_enabled: true
-  cache_ttl_hours: 48
   
   # Google Sheets integration
   google_sheets:
@@ -165,6 +163,14 @@ output:
     ahl_sheet_id: "19LezmfR4azwXmtepI_ASTgu7MYr2-sdPgp_8pGv-JaM"
     asf_sheet_id: "kmHGOcNzBBtO3aZnRsmELic35rD4XetExS0eJASH1fQ"
     upload_aggregated_data: true
+
+# Argilla integration for manual review of LLM relevance checks
+argilla:
+  enabled: true  # Set to true to enable Argilla integration
+  workspace: "argilla"  # Default workspace name in Argilla
+
+  sampling:
+    base_sample_size: 10  # Initial sample size per topic per quarter
 
 # Execution settings
 execution:

@@ -13,23 +13,23 @@ import altair as alt
 from .base import BaseAnalysisModule
 from ..config_manager import get_pipeline_config
 
-from discovery_utils.synthesis.policy import policy_update
+from discovery_utils.getters import hansard
 from discovery_utils.utils import charts, analysis
 
 logger = logging.getLogger(__name__)
 
 
-class HansardAnalysisModule(BaseAnalysisModule[policy_update.HansardData]):
+class HansardAnalysisModule(BaseAnalysisModule[hansard.HansardGetter]):
     """Hansard analysis module implementation using BaseAnalysisModule ABC."""
     
     def __init__(self, mission: str):
         super().__init__("hansard", mission)
     
-    def _create_default_getter(self) -> policy_update.HansardData:
-        """Create default HansardData instance."""
-        return policy_update.HansardData()
+    def _create_default_getter(self) -> hansard.HansardGetter:
+        """Create default HansardGetter instance."""
+        return hansard.HansardGetter()
     
-    def _process_topic_data(self, topic_data: Dict[str, Any], getter: policy_update.HansardData) -> Dict[str, pd.DataFrame]:
+    def _process_topic_data(self, topic_data: Dict[str, Any], getter: hansard.HansardGetter) -> Dict[str, pd.DataFrame]:
         """Process Hansard topic data using existing discovery_utils analysis functions.
         
         Mirrors the existing produce_hansard_stats logic exactly.
@@ -148,15 +148,15 @@ class HansardAnalysisModule(BaseAnalysisModule[policy_update.HansardData]):
     
     # Helper methods from original implementation
     
-    def _get_speeches_data(self, HansardData, config) -> pd.DataFrame:
+    def _get_speeches_data(self, getter, config) -> pd.DataFrame:
         """Get speeches data."""
         missions = [config.current_mission]
         
         speeches_df = (
-            HansardData.debates_df
+            getter.get_debates_parquet()
             .query(config.get_date_query_filter())
             .merge(
-                HansardData.labelstore_df[['id', 'mission_labels', 'topic_labels']],
+                getter.get_labelstore(keywords=True)[['id', 'mission_labels', 'topic_labels']],
                 left_on='speech_id',
                 right_on='id',
                 how='left'

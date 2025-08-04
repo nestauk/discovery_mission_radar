@@ -5,10 +5,14 @@ Handles loading and providing configuration settings throughout the pipeline,
 including parameterized date ranges and current period settings.
 """
 import yaml
+import os
 from pathlib import Path
 from datetime import datetime, date
 from typing import Dict, Any, Optional, List
 import logging
+
+from dotenv import load_dotenv
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 

@@ -10,4 +10,3 @@ __author__ = "Methods Discovery"
 
 from .config_manager import PipelineConfig, get_pipeline_config
 from .runner import MissionRadarRunner
-from .cli import main as cli_main 
