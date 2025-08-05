@@ -1,0 +1,53 @@
+---
+search_recipe:
+  category_name: "Healthier Food & Meal Replacements"
+
+  scope_statements:
+    - "Consumer-facing food and beverage brands marketing products with explicit health or nutritional benefits, such as low-sugar, high-protein, high-fibre, or keto-friendly."
+    - "Companies producing and selling formulated meal replacement products, including powders, shakes, bars, and ready-to-drink meals for weight management or complete nutrition."
+    - "Brands focused on healthy snacking, functional beverages, and ready-to-eat meals with improved nutritional profiles."
+    - "Excludes B2B companies that only supply raw ingredients or reformulation technology."
+    - "Excludes standard restaurant chains or grocery products without a clear and central health-oriented value proposition."
+
+  keyword_sets:
+    - set_name: "Health & Diet Claims"
+      keywords:
+        - "low calorie"
+        - "low carb"
+        - "low fat"
+        - "low salt"
+        - "reduced salt"
+        - "low sugar"
+        - "reduced sugar"
+        - "sugar free"
+        - "no added sugar"
+        - "high protein"
+        - "protein rich"
+        - "alternative protein"
+        - "high fibre"
+        - "keto"
+        - "ketogenic"
+        - "plant-based"
+        - "plant-based diet"
+        - "vegan"
+        - "healthy food"
+        - "healthy snack"
+        - "functional food"
+
+    - set_name: "Meal Replacement & Product Formats"
+      keywords:
+        - "meal replacement"
+        - "diet shake"
+        - "meal shake"
+        - "nutritionally complete"
+        - "total diet replacement"
+        - "protein bar"
+        - "protein shake"
+        - "functional beverage"
+        - "health drink"
+        - "dairy substitute"
+        - "seafood substitute"
+        - "ready meal"
+        - "ready-to-eat meal"
+        - "meal kit"
+        - "recipe box"

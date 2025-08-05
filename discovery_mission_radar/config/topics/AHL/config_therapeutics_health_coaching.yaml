@@ -1,0 +1,43 @@
+---
+search_recipe:
+  category_name: "Digital Therapeutics & Health Coaching"
+
+  scope_statements:
+    - "Clinically-validated digital therapeutics (DTx) for the management of obesity, pre-diabetes, and type 2 diabetes."
+    - "Software-as-a-Medical-Device (SaMD) platforms designed for delivering evidence-based behavioural or lifestyle interventions."
+    - "B2B platforms providing remote patient monitoring and digital coaching, intended for commissioning by healthcare systems, insurers, or employers."
+    - "Excludes general consumer wellness apps, fitness trackers, and calorie counters not intended for clinical use or prescription."
+
+  keyword_sets:
+    - set_name: "Core Technology & Classification"
+      keywords:
+        - "digital therapeutic"
+        - "digital therapeutics"
+        - "DTx"
+        - "software as a medical device"
+        - "SaMD"
+        - "digital medicine"
+        - "prescribed digital"
+        - "prescription digital"
+
+    - set_name: "Program & Service Context"
+      keywords:
+        - "health coaching"
+        - "digital coaching"
+        - "remote patient monitoring"
+        - "virtual care platform"
+        - "lifestyle change program"
+        - "behavioural therapy"
+        - "behavioral therapy"
+        - "NHS digital weight management"
+
+    - set_name: "Disease & Condition Context"
+      keywords:
+        - "obesity"
+        - "overweight"
+        - "pre-diabetes"
+        - "prediabetes"
+        - "type 2 diabetes"
+        - "metabolic health"
+        - "weight management"
+        - "weight loss"
