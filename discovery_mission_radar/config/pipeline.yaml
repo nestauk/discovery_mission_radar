@@ -167,7 +167,7 @@ output:
 # Argilla integration for manual review of LLM relevance checks
 argilla:
   enabled: true  # Set to true to enable Argilla integration
-  workspace: "argilla"  # Default workspace name in Argilla
+  workspace: "admin"  # Default workspace name in Argilla
 
   sampling:
     base_sample_size: 10  # Initial sample size per topic per quarter
