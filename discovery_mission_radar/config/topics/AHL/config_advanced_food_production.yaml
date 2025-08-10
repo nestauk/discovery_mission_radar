@@ -1,0 +1,56 @@
+search_recipe:
+  category_name: "Advanced Food Production"
+
+  scope_statements:
+    - "Companies using deep-technology platforms like fermentation (precision, biomass, gas), cellular agriculture, or AI for the purpose of creating novel food ingredients or proteins."
+    - "The research and development of foundational technologies that enable the creation of new food sources or alternative proteins at a molecular or cellular level."
+    - "B2B companies developing and scaling these production methods to supply the wider food industry."
+    - "Excludes companies that are solely focused on creating consumer-facing food products (e.g., a vegan burger brand) without developing the underlying production technology themselves."
+    - "Excludes traditional agricultural techniques and simple food processing."
+
+  keyword_sets:
+    - set_name: "Fermentation & Mycoprotein"
+      keywords:
+        - "precision fermentation"
+        - "biomass fermentation"
+        - "gas fermentation"
+        - "solid-state fermentation"
+        - "mycoprotein"
+        - "fungal protein"
+        - "mycelium"
+        - "quorn"
+
+    - set_name: "Cellular Agriculture"
+      keywords:
+        - "cellular agriculture"
+        - "cultivated meat"
+        - "cultured meat"
+        - "lab-grown meat"
+        - "cell-based meat"
+        - "cultivated protein"
+        - "cultured protein"
+        - "lab-grown protein"
+        - "cell-based protein"
+        - "slaughter-free meat"
+        - "in vitro meat"
+        - "clean meat"
+        - "synthetic meat"
+        
+    - set_name: "AI & Computational Design"
+      keywords:
+        - "AI-driven discovery"
+        - "computational biology"
+        - "ingredient discovery platform"
+        - "food design"
+        - "AI ingredient"
+        
+    - set_name: "General & Overarching Terms"
+      keywords:
+        - "synthetic biology"
+        - "food technology"
+        - "food tech"
+        - "foodtech"
+        - "food science"
+        - "novel food"
+        - "alternative protein"
+        - "alt protein"

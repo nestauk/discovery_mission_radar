@@ -299,22 +299,22 @@ def show_config(mission: str):
         # Data sources
         print(f"\nData Sources:")
         for source_name in ['crunchbase', 'gtr', 'hansard']:
-            enabled = "✅ Enabled" if config.is_source_enabled(source_name) else "❌ Disabled"
-            llm_check = "✅ Enabled" if config.should_run_llm_check(source_name) else "❌ Disabled"
+            enabled = "Enabled" if config.is_source_enabled(source_name) else "Disabled"
+            llm_check = "Enabled" if config.should_run_llm_check(source_name) else "Disabled"
             print(f"  - {source_name.upper()}: {enabled} (LLM Check: {llm_check})")
         
         # Output settings
         print(f"\nOutput Settings:")
         print(f"  - Base Directory: {config.output_base_dir}")
-        print(f"  - Cache Enabled: {'✅ Yes' if config.cache_enabled else '❌ No'}")
+        print(f"  - Cache Enabled: {'Yes' if config.cache_enabled else 'No'}")
         
         # Google Sheets
         if config.google_sheets_enabled:
-            print(f"  - Google Sheets: ✅ Enabled")
+            print(f"  - Google Sheets: Enabled")
             print(f"    - Sheet ID: {config.google_sheets_id}")
-            print(f"    - Upload Aggregated Data: {'✅ Yes' if config.upload_aggregated_data else '❌ No'}")
+            print(f"    - Upload Aggregated Data: {'Yes' if config.upload_aggregated_data else 'No'}")
         else:
-            print(f"  - Google Sheets: ❌ Disabled")
+            print(f"  - Google Sheets: Disabled")
         
         return config
         
@@ -378,6 +378,14 @@ def cli(ctx, mission, config_dir, output_dir, log_level):
     except Exception as e:
         click.echo(f"Error: Failed to initialize runner: {e}", err=True)
         sys.exit(1)
+
+    try:
+        from discovery_mission_radar.pipeline.data_sources.argilla import ensure_users_from_s3
+        click.echo("Provisioning Argilla users from S3: credentials/argilla_users.json")
+        summary = ensure_users_from_s3(ctx.obj['mission'], key='credentials/argilla_users.json')
+        click.echo(f"Argilla users: created={summary['created']} existing={summary['existing']} errors={summary['errors']}")
+    except Exception as e:
+        click.echo(f"Warning: Argilla user provisioning skipped: {e}")
 
 @cli.command()
 @click.argument('topic_name')
@@ -575,6 +583,7 @@ def argilla_status(ctx, quarter, topic):
     except Exception as e:
         click.echo(f"Error: Command failed: {e}", err=True)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     cli() 

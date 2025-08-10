@@ -1,0 +1,58 @@
+---
+search_recipe:
+  category_name: "Consumer Health & Weight Tech"
+
+  scope_statements:
+    - "Direct-to-consumer wellness apps for calorie counting, nutrition tracking, and fitness logging."
+    - "Personal health monitoring devices such as smart scales, fitness trackers, and smart watches."
+    - "General weight loss and health management apps intended for individual consumer use."
+    - "Excludes clinically-validated Digital Therapeutics (DTx), SaMD platforms, or any software intended for prescription or use within a formal healthcare provider's program."
+
+  keyword_sets:
+    - set_name: "Hardware & Devices"
+      keywords:
+        - "fitness tracker"
+        - "health tracker"
+        - "wearable device"
+        - "wearable technology"
+        - "smart scale"
+        - "smart scales"
+        - "smart watch"
+
+    - set_name: "Software & Apps"
+      keywords:
+        - "wellness app"
+        - "health app"
+        - "nutrition app"
+        - "calorie counter"
+        - "food diary"
+        - "food log"
+        - "weight loss app"
+        - "fitness app"
+
+    - set_name: "Health & Condition Context"
+      keywords:
+        - "obesity"
+        - "overweight"
+        - "weight management"
+        - "weight loss"
+        - "obesity prevention"
+        - "metabolic health"
+
+    - set_name: "General Concepts"
+      keywords:
+        - "consumer health"
+        - "personal health"
+        - "health and wellness"
+        - "personalized nutrition"
+        - "personalised nutrition"
+        - "physical activity"
+        - "gut microbiome"
+        - "wellbeing"
+        - "well-being"
+        - "nutrition personalisation"
+        - "nutrition personalization"
+        - "personalised diet"
+        - "personalised nutrition"
+        - "personalized diet"
+        - "nutrigenomics"

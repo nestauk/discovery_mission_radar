@@ -1,0 +1,70 @@
+---
+search_recipe:
+  category_name: "Reformulation Ingredients"
+
+  scope_statements:
+    - "Companies developing and producing novel ingredients or technologies specifically for food reformulation, such as alternative sweeteners, fat replacers, salt substitutes, and fibre enhancers."
+    - "B2B ingredient science companies that supply the food and beverage industry with functional ingredients to improve the nutritional profile of consumer products."
+    - "The development of 'clean label' ingredients and formulation techniques that reduce calories, sugar, salt, or fat without compromising taste or texture."
+    - "Excludes companies that only produce or market final consumer-facing food products (e.g., a 'low-sugar' chocolate bar brand)."
+    - "Excludes the deep-tech production platforms themselves (e.g., precision fermentation), focusing instead on the ingredient outputs."
+
+  keyword_sets:
+    - set_name: "Sugar & Sweeteners"
+      keywords:
+        - "sweetener"
+        - "sugar substitute"
+        - "sugar alternative"
+        - "sugar reduction"
+        - "allulose"
+        - "erythritol"
+        - "monk fruit"
+        - "stevia"
+        - "thaumatin"
+        - "tagatose"
+
+    - set_name: "Fat & Lipids"
+      keywords:
+        - "fat substitute"
+        - "fat replacer"
+        - "fat reduction"
+        - "oleogel"
+        - "structured lipids"
+        - "alternative fat"
+        - "fat mimetic"
+        - "alternative emulsifier"
+        - "artificial fat"
+        - "fatty acid substitute"
+
+    - set_name: "Salt & Sodium Reduction"
+      keywords:
+        - "salt substitute"
+        - "salt reduction"
+        - "low sodium"
+        - "potassium chloride"
+        - "sodium reduction"
+
+    - set_name: "Fibre & Texture"
+      keywords:
+        - "dietary fibre"
+        - "dietary fiber"
+        - "fiber additive"
+        - "fibre additive"
+        - "fiber enhancement"
+        - "fibre enhancement"
+        - "fiber enhancer"
+        - "fibre enhancer"
+        - "hydrocolloid"
+        - "inulin"
+        - "chicory root fibre"
+        - "bulking agent"
+        - "texturant"
+
+    - set_name: "General Reformulation Context"
+      keywords:
+        - "ingredient science"
+        - "food formulation"
+        - "clean label"
+        - "reformulation"
+        - "reformulated"
+        - "functional ingredient"

@@ -1,0 +1,38 @@
+---
+search_recipe:
+  category_name: "Physical Activity & Sports Tech"
+
+  scope_statements:
+    - "Consumer-facing technologies, platforms, and equipment designed to encourage, track, or enhance physical exercise and sporting activities."
+    - "Connected home gym equipment (like smart treadmills, bikes, and resistance machines) and virtual fitness class platforms."
+    - "Gamified fitness experiences, exergaming, and mobile apps with a primary focus on workouts and physical challenges."
+    - "Excludes professional sports team management software, broadcasting tech, betting platforms, and general wellness apps where physical activity is not the core feature."
+
+  keyword_sets:
+    - set_name: "Fitness & Exercise Context"
+      keywords:
+        - "physical activity"
+        - "exercise"
+        - "fitness"
+        - "workout"
+        - "training"
+        - "gym"
+        - "home gym"
+        - "sports tech"
+
+    - set_name: "Connected Equipment & Platforms"
+      keywords:
+        - "connected fitness"
+        - "smart gym"
+        - "smart fitness"
+        - "interactive fitness"
+        - "virtual fitness"
+        - "online fitness"
+        - "peloton" # High-signal brand keyword
+
+    - set_name: "Gamification & Exergaming"
+      keywords:
+        - "exergame"
+        - "exergaming"
+        - "gamified fitness"
+        - "fitness game"

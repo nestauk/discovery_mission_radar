@@ -1,0 +1,40 @@
+---
+search_recipe:
+  category_name: "Active Transport"
+
+  scope_statements:
+    - "Technologies and services promoting cycling and walking for transportation."
+    - "E-bike and scooter sharing schemes and subscription services."
+    - "Urban planning software and data analytics platforms for active travel infrastructure."
+    - "Excludes general ride-sharing, public transit technology (unless directly integrated with active travel), and long-distance travel."
+
+  keyword_sets:
+    - set_name: "Modes of Transport"
+      keywords:
+        - "e-bike"
+        - "ebike"
+        - "e-scooter"
+        - "escooter"
+        - "electric bike"
+        - "electric scooter"
+        - "bicycle"
+        - "cycling"
+        - "walking"
+        - "micromobility"
+        - "micro-mobility"
+
+    - set_name: "Service & Business Models"
+      keywords:
+        - "bike sharing"
+        - "bike share"
+        - "scooter sharing"
+        - "scooter share"
+        - "bike subscription"
+        - "cycle to work"
+
+    - set_name: "Broader Concepts"
+      keywords:
+        - "active travel"
+        - "active transport"
+        - "urban mobility"
+        - "sustainable transport"
