@@ -1,16 +1,59 @@
 #!/usr/bin/env python3
 """
-Minimal script to analyze Hansard speeches for mentions of electricity prices and costs.
-
-This script searches through parliamentary speeches to find sentences that mention
-both "electricity" and either "price" or "cost" in the same sentence.
+Script to analyze Hansard speeches for mentions of energy prices and costs.
 """
 
 import datetime
 import pandas as pd
 from discovery_utils.synthesis.policy import policy_update
 from discovery_utils.utils import keywords as kw
+from discovery_mission_radar import PROJECT_DIR
 
+OUTPUT_DIR = PROJECT_DIR / "data/2025_Q2_ASF/hansard"
+START_YEAR = 2014
+
+TOPIC_KEYWORDS = [
+    "electricity",
+    "energy",
+    "heating",
+    " gas ",
+    "heat pump",
+]
+
+COST_KEYWORDS = [
+    ["price"],
+    ["cost"],
+    ["pricing"],
+    ["costs"],
+    ["bills"],
+    ["tariff"],
+    ["tariffs"],
+    ["rate"],
+    ["rates"],
+    ["charge"],
+    ["charges"],
+    ["expense"],
+    ["expenses"],
+    ["payment"],
+    ["payments"],
+    ["spend"],
+    ["spending"],
+    ["expenditure"],
+    ["affordability"],
+    ["affordable"],
+    ["expensive"],
+    ["cheap"],
+    ["cheaper"],
+    ["expensive"],
+    ["costly"],
+    ["budget"],
+    ["budgeting"],
+    ["financial"],
+    ["finance"],
+    ["money"],
+    ["pound"],
+    ["pounds"],
+]
 
 def get_quarter_from_date(date: str) -> int:
     """Return the quarter number from a given YYYY-MM-DD date string."""
@@ -18,39 +61,20 @@ def get_quarter_from_date(date: str) -> int:
     return (_date.month - 1) // 3 + 1
 
 
-def create_minimal_electricity_price_keywords():
-    """Create keywords dictionary for electricity price/cost analysis."""
-    return {
-        "electricity_prices": [
-            ["electricity", "price"],
-            ["electricity", "cost"],
-            ["electricity", "pricing"],
-            ["electricity", "costs"],
-        ]
-    }
+def create_cost_keywords(topic_keyword: str) -> dict:
+    """Create keywords dictionary for price/cost analysis."""
+    cost_keywords = [[topic_keyword] + cost_keyword for cost_keyword in COST_KEYWORDS]
+    return {topic_keyword: cost_keywords}
 
 
-def analyze_electricity_prices():
-    """Main function to analyze electricity price mentions in Hansard speeches."""
-    
-    print("Loading Hansard data...")
-    HansardData = policy_update.HansardData()
-    
-    print("Processing speeches...")
-    speeches_df = (
-        HansardData.debates_df
-        .query("date >= '2014-01-01' & date <= '2025-08-31'")
-        .assign(quarter=lambda df: df.date.apply(get_quarter_from_date))
-        .assign(quarter=lambda df: df.year.astype(str) + "-Q" + df.quarter.astype(str))
-    )
-    
-    print(f"Loaded {len(speeches_df)} speeches from 2014 to 2025")
-    
+def get_cost_mentions(topic_keyword: str, speeches_df: pd.DataFrame):
+    """Main function to analyze price/cost mentions in Hansard speeches."""
+
     # Create keywords dictionary
-    keywords_dict = create_minimal_electricity_price_keywords()
+    keywords_dict = create_cost_keywords(topic_keyword)
     
     # Process each speech to find electricity price mentions
-    print("Searching for electricity price mentions...")
+    print(f"Searching for {topic_keyword} price mentions...")
     all_hits = []
     
     for idx, row in speeches_df.iterrows():
@@ -86,7 +110,7 @@ def analyze_electricity_prices():
         print(f"\nFound {len(combined_hits)} sentences mentioning electricity prices/costs")
         
         # Save results
-        output_file = "electricity_price_mentions.csv"
+        output_file = OUTPUT_DIR / f"cost_mentions_{topic_keyword}.csv"
         combined_hits.to_csv(output_file, index=False)
         print(f"Results saved to {output_file}")
         
@@ -111,4 +135,19 @@ def analyze_electricity_prices():
 
 
 if __name__ == "__main__":
-    results = analyze_electricity_prices() 
+    print("Loading Hansard data...")
+    HansardData = policy_update.HansardData()
+    
+    print("Processing speeches...")
+    speeches_df = (
+        HansardData.debates_df
+        .query(f"date >= '{START_YEAR}-01-01' & date <= '2025-08-31'")
+        .assign(quarter=lambda df: df.date.apply(get_quarter_from_date))
+        .assign(quarter=lambda df: df.year.astype(str) + "-Q" + df.quarter.astype(str))
+        .assign(speech=lambda df: df.speech.apply(lambda x: x.lower()))
+        .reset_index(drop=True)
+    )
+    
+    print(f"Loaded {len(speeches_df)} speeches from 2014 to 2025")
+    for topic_keyword in TOPIC_KEYWORDS:
+        results = get_cost_mentions(topic_keyword, speeches_df) 
