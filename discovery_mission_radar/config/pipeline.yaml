@@ -144,13 +144,11 @@ categories_to_show:
     - "energy_efficiency"
     - "ccus"
   AHL:
-    - "reformulation_fiber"
-    - "reformulation_salt"
-    - "reformulation_fat"
-    - "reformulation_general"
-    - "reformulation_sugar"
-    #- "food_advertisement"
     - "weight_loss_drugs"
+    - "reformulation_ingredients"
+    - "food_retail_analytics"
+    - "health_food_meal_replacement"
+    - "advanced_food_production"
 
 # Output settings  
 output:

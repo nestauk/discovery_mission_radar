@@ -136,7 +136,52 @@ async def get_entities_to_sample(
         return []
     
     available['hash'] = available['id'].apply(lambda x: hash(f"{x}_{quarter}_{topic}_{source_name}"))
-    sampled = available.nsmallest(min(sample_size, len(available)), 'hash')
+
+    # Determine remaining capacity for this topic/quarter to avoid oversampling across runs
+    existing_ids = []
+    if key_prefix in registry:
+        existing_ids = registry[key_prefix].get('entity_ids', [])
+    existing_count = len(existing_ids)
+    remaining_to_sample = max(0, sample_size - existing_count)
+    if remaining_to_sample == 0:
+        logger.info(f"Sampling cap reached for {source_name} {topic} {quarter} (existing={existing_count}, cap={sample_size}); skipping selection")
+        return []
+
+    # Balanced sampling by LLM decision where available
+    sampled = None
+    if 'is_relevant' in available.columns and available['is_relevant'].notna().any():
+        try:
+            positive = available[available['is_relevant'] == 'yes'].copy()
+            negative = available[available['is_relevant'] == 'no'].copy()
+
+            target_pos = remaining_to_sample // 2
+            target_neg = remaining_to_sample - target_pos
+
+            pos_take = min(target_pos, len(positive))
+            neg_take = min(target_neg, len(negative))
+
+            # If one side is short, top up from the other side deterministically
+            remaining = remaining_to_sample - (pos_take + neg_take)
+            if remaining > 0:
+                if pos_take < target_pos and len(negative) - neg_take > 0:
+                    extra_neg = min(remaining, len(negative) - neg_take)
+                    neg_take += extra_neg
+                    remaining -= extra_neg
+                if remaining > 0 and len(positive) - pos_take > 0:
+                    extra_pos = min(remaining, len(positive) - pos_take)
+                    pos_take += extra_pos
+
+            pos_sample = positive.nsmallest(pos_take, 'hash') if pos_take > 0 else positive.iloc[0:0]
+            neg_sample = negative.nsmallest(neg_take, 'hash') if neg_take > 0 else negative.iloc[0:0]
+
+            sampled = pd.concat([pos_sample, neg_sample], ignore_index=True)
+            # Ensure deterministic overall ordering
+            sampled = sampled.nsmallest(len(sampled), 'hash')
+        except Exception:
+            # Safety fallback to deterministic sampling
+            sampled = available.nsmallest(min(remaining_to_sample, len(available)), 'hash')
+    else:
+        sampled = available.nsmallest(min(remaining_to_sample, len(available)), 'hash')
     
     new_ids = sampled['id'].tolist()
     current_time = datetime.now().isoformat()
@@ -164,6 +209,104 @@ async def get_entities_to_sample(
     
     logger.info(f"Sampled {len(new_ids)} entities for Argilla review in {source_name} {topic}")
     return new_ids
+
+
+def reset_sampling_registry(mission: str, source_name: str, cache_dir: Path, delete_remote: bool = True) -> bool:
+    """Reset the Argilla sampling registry for a source.
+
+    Removes the local registry file and, if configured, deletes the remote S3
+    registry object. This fully resets sampling history for the specified
+    `source_name` and `mission`.
+
+    Args:
+        mission: Mission identifier (e.g., 'AHL', 'ASF').
+        source_name: Data source name, e.g., 'crunchbase', 'gtr', 'hansard'.
+        cache_dir: Base cache directory used by the pipeline for this mission.
+        delete_remote: Whether to delete the S3 registry object if S3 is enabled.
+
+    Returns:
+        True if the reset completed without critical errors, False otherwise.
+    """
+    ok = True
+    try:
+        registry_file = cache_dir / f"sampling_registry_{source_name}.json"
+        if registry_file.exists():
+            try:
+                registry_file.unlink()
+                logger.info(f"Deleted local Argilla sampling registry: {registry_file}")
+            except Exception as e:
+                logger.warning(f"Failed to delete local registry {registry_file}: {e}")
+                ok = False
+
+        if delete_remote:
+            s3_cache = S3CacheManager(mission)
+            if s3_cache.enabled:
+                try:
+                    key = _registry_s3_key(mission, source_name)
+                    s3_cache.s3.delete_object(Bucket=s3_cache.bucket_name, Key=key)
+                    logger.info(f"Deleted remote Argilla sampling registry: s3://{s3_cache.bucket_name}/{key}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete remote registry for {source_name}: {e}")
+                    ok = False
+    except Exception as e:
+        logger.error(f"Unexpected error resetting sampling registry for {source_name}: {e}")
+        ok = False
+    return ok
+
+
+def delete_argilla_datasets_for_source(mission: str, source_name: str, workspace: str = "admin") -> int:
+    """Delete all Argilla datasets for a mission/source across topics.
+
+    Args:
+        mission: Mission identifier (e.g., 'AHL', 'ASF').
+        source_name: Data source name, e.g., 'crunchbase', 'gtr', 'hansard'.
+        workspace: Argilla workspace name.
+
+    Returns:
+        Number of datasets successfully deleted.
+    """
+    try:
+        client = get_argilla_client()
+    except Exception as e:
+        logger.error(f"Cannot initialise Argilla client: {e}")
+        return 0
+
+    deleted = 0
+    try:
+        prefix = f"{mission}_{source_name}_"
+        try:
+            datasets = [ds for ds in client.datasets.list() if hasattr(ds, 'workspace') and ds.workspace and getattr(ds.workspace, 'name', None) == workspace]
+        except Exception as e:
+            logger.error(f"Failed listing datasets in workspace '{workspace}': {e}")
+            return 0
+
+        for ds in datasets:
+            try:
+                if getattr(ds, 'name', '').startswith(prefix):
+                    # Try dataset-bound delete first, then client-based
+                    if hasattr(ds, 'delete'):
+                        ds.delete()
+                    else:
+                        try:
+                            client.datasets.delete(ds)
+                        except Exception:
+                            # Fallback: retrieve by name and delete
+                            try:
+                                resolved = client.datasets(ds.name, workspace=workspace)
+                                if hasattr(resolved, 'delete'):
+                                    resolved.delete()
+                            except Exception:
+                                pass
+                    deleted += 1
+                    logger.info(f"Deleted Argilla dataset: {ds.name} (workspace={workspace})")
+            except Exception as e_del:
+                logger.warning(f"Failed to delete dataset {getattr(ds, 'name', 'unknown')}: {e_del}")
+                continue
+    except Exception as e:
+        logger.error(f"Unexpected error deleting Argilla datasets for {mission}/{source_name}: {e}")
+        return deleted
+
+    return deleted
 
 
 def export_to_argilla(
@@ -472,35 +615,31 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
     The S3 bucket is taken from the pipeline S3 configuration (S3CacheManager).
     """
     import argilla as rg
-
+    
     s3_cache = S3CacheManager(mission)
     if not s3_cache.enabled:
         logger.info("S3 is not configured (S3_BUCKET missing). Skipping Argilla user provisioning.")
         return {"created": 0, "existing": 0, "errors": 0}
-
+    
     try:
-        users_data = _download_obj(s3_cache.s3, s3_cache.bucket_name, f"data/{key}", download_as='list')
+        users_data = _download_obj(s3_cache.s3, s3_cache.bucket_name, key, download_as='list')
     except Exception as e:
-        # Also try without 'data/' prefix if credentials placed at bucket root path provided by user
-        try:
-            users_data = _download_obj(s3_cache.s3, s3_cache.bucket_name, key, download_as='list')
-        except Exception as e2:
-            logger.info(f"No Argilla users credentials found in S3 at '{key}' or 'data/{key}': {e2}")
-            return {"created": 0, "existing": 0, "errors": 0}
-
+        logger.info(f"No Argilla users credentials found in S3 at '{key}': {e}")
+        return {"created": 0, "existing": 0, "errors": 0}
+    
     if not isinstance(users_data, list):
         logger.error("Credentials JSON must be a list of user objects")
         return {"created": 0, "existing": 0, "errors": 1}
-
+    
     client = get_argilla_client()
     if not _is_owner(client):
         logger.warning("Current Argilla user is not 'owner'. Skipping user provisioning.")
         return {"created": 0, "existing": 0, "errors": 0}
-
+    
     created = 0
     existing = 0
     errors = 0
-
+    
     for entry in users_data:
         try:
             username = entry["username"]
@@ -510,8 +649,9 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
             first_name = entry.get("first_name", username)
             last_name = entry.get("last_name", "")
             role = entry.get("role", "annotator")
-
-            user = rg.User(
+            workspace_names = entry.get("workspaces", [])
+            
+            user_obj = rg.User(
                 username=username,
                 first_name=first_name,
                 last_name=last_name,
@@ -520,7 +660,7 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
                 client=client,
             )
             try:
-                user.create()
+                user_obj.create()
                 created += 1
                 logger.info(f"Created Argilla user: {username}")
             except Exception as ce:
@@ -528,13 +668,27 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
                 if "exist" in msg or "already" in msg or "409" in msg:
                     existing += 1
                     logger.info(f"User already exists: {username}")
+                    try:
+                        user_obj = client.users(username)
+                    except Exception:
+                        pass
                 else:
                     errors += 1
                     logger.error(f"Failed creating user {username}: {ce}")
+                    continue
+            
+            for ws_name in workspace_names:
+                try:
+                    workspace = client.workspaces(ws_name)
+                    if workspace and hasattr(user_obj, 'add_to_workspace'):
+                        user_obj.add_to_workspace(workspace)
+                        logger.info(f"Added {username} to workspace: {ws_name}")
+                except Exception as e_ws:
+                    logger.warning(f"Could not add {username} to workspace {ws_name}: {e_ws}")
         except Exception as e:
             errors += 1
             logger.error(f"Error provisioning user from entry {entry}: {e}")
-
+    
     summary = {"created": created, "existing": existing, "errors": errors}
     logger.info(f"Argilla user provisioning summary: {summary}")
     return summary 

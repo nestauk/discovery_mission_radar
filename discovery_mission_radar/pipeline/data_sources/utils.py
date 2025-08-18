@@ -266,13 +266,20 @@ async def run_llm_relevance_check_async(
         logger.info(f"LLM relevance check completed for {topic_name}: {len(new_ids_to_check)} new entities processed")
     else:
         logger.info(f"All entities already checked for {topic_name}, skipping LLM calls")
-        relevant_check_df = pd.DataFrame([
-            {'id': entity_id, 'is_relevant': is_relevant}
-            for entity_id, is_relevant in existing_results.items()
-        ])
+        # Rebuild from cache to preserve fields like 'explanation' for consistency
+        try:
+            relevant_check_df = existing_df.copy()
+            if 'explanation' not in relevant_check_df.columns:
+                relevant_check_df['explanation'] = ''
+        except Exception:
+            # Fallback minimal shape
+            relevant_check_df = pd.DataFrame([
+                {'id': entity_id, 'is_relevant': is_relevant}
+                for entity_id, is_relevant in existing_results.items()
+            ])
     
-    # Argilla: Sample and export new entities for manual review
-    if pipeline_config and pipeline_config.get('argilla', {}).get('enabled', False) and new_ids_to_check:
+    # Argilla: Sample and export entities for manual review (even if no new LLM checks)
+    if pipeline_config and pipeline_config.get('argilla', {}).get('enabled', False):
         try:
             from .argilla import get_entities_to_sample, export_to_argilla
             
@@ -282,13 +289,21 @@ async def run_llm_relevance_check_async(
             
             logger.info(f"Argilla sampling enabled - selecting entities for manual review")
             
-            # Get entities to sample from the newly processed ones
-            new_items_with_results = items_df[items_df[id_column].isin(new_ids_to_check)].copy()
-            new_results_df = relevant_check_df[relevant_check_df['id'].isin(new_ids_to_check)]
+            # Build candidate pool: prefer newly processed entities; if none, use all with results
+            if new_ids_to_check:
+                candidate_ids = list(new_ids_to_check)
+            else:
+                candidate_ids = items_df[id_column].tolist()
+            new_items_with_results = items_df[items_df[id_column].isin(candidate_ids)].copy()
+            new_results_df = relevant_check_df[relevant_check_df['id'].isin(candidate_ids)]
             
             # Merge LLM results with entity data for sampling
+            # Select only columns that exist (older caches may lack 'explanation')
+            merge_cols = ['id', 'is_relevant']
+            if 'explanation' in new_results_df.columns:
+                merge_cols.append('explanation')
             entities_for_sampling = new_items_with_results.merge(
-                new_results_df[['id', 'is_relevant', 'explanation']], 
+                new_results_df[merge_cols], 
                 left_on=id_column, 
                 right_on='id', 
                 how='inner'
@@ -311,7 +326,7 @@ async def run_llm_relevance_check_async(
                     else:
                         logger.warning(f"Failed to export entities to Argilla")
                 else:
-                    logger.debug(f"No new entities selected for sampling (avoiding duplicates)")
+                    logger.debug(f"No entities selected for Argilla sampling (cap reached or no available candidates)")
             else:
                 logger.debug(f"No entities available for Argilla sampling")
                 
@@ -425,6 +440,17 @@ async def _llm_processing_with_s3_upload(
                 await asyncio.sleep(wait_time)
 
 
+def _read_processed_ids(output_file: Path) -> set:
+    """Read processed IDs from output file to support resumable retries."""
+    if not output_file.exists():
+        return set()
+    try:
+        df = pd.read_json(output_file, lines=True)
+        return set(df['id'].tolist())
+    except Exception:
+        return set()
+
+
 async def _process_with_native_batching(
     processor,
     check_data: Dict,
@@ -440,8 +466,16 @@ async def _process_with_native_batching(
     )
     
     try:
-        # Let discovery-utils handle all batching internally
-        await processor.process_text_data(check_data)
+        # Bound overall processing time to avoid indefinite hangs
+        timeout_s = 900  # seconds
+        try:
+            await asyncio.wait_for(
+                processor.process_text_data(check_data),
+                timeout=timeout_s,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"Native batching timed out after {timeout_s}s; will resume from progress and retry in outer logic if applicable")
+            raise
         
     finally:
         # Cancel periodic uploads and do final upload
@@ -484,11 +518,32 @@ async def _process_with_two_stage_batching(
         # Retry logic per outer batch
         for inner_attempt in range(max_inner_retries):
             try:
-                # Process this outer batch with discovery-utils (which will create its own inner batches)
-                await processor.process_text_data(outer_batch_data)
+                # Time-bound this outer batch
+                per_item =0.5  # seconds per item
+                max_batch = 900  # hard cap per outer batch
+                timeout_s = min(max_batch, per_item * len(outer_batch_items) + 30)
+                await asyncio.wait_for(
+                    processor.process_text_data(outer_batch_data),
+                    timeout=timeout_s,
+                )
                 logger.debug(f"Outer batch {outer_batch_num} completed successfully")
                 break  # Success, move to next outer batch
                 
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Outer batch {outer_batch_num} timed out after {timeout_s}s on attempt {inner_attempt + 1}/{max_inner_retries}"
+                )
+                # Resume: remove any IDs already processed and retry remaining only
+                processed_ids = _read_processed_ids(output_file)
+                remaining = {k: v for k, v in outer_batch_data.items() if k not in processed_ids}
+                if not remaining:
+                    logger.info(f"All items in outer batch {outer_batch_num} appear processed after timeout; continuing")
+                    break
+                outer_batch_data = remaining
+                logger.info(f"Retrying outer batch {outer_batch_num} with {len(outer_batch_data)} remaining items")
+                if inner_attempt == max_inner_retries - 1:
+                    logger.error(f"Outer batch {outer_batch_num} failed after {max_inner_retries} attempts due to repeated timeouts")
+                    raise
             except Exception as e:
                 logger.warning(f"Outer batch {outer_batch_num} attempt {inner_attempt + 1}/{max_inner_retries} failed: {e}")
                 if inner_attempt == max_inner_retries - 1:

@@ -585,5 +585,35 @@ def argilla_status(ctx, quarter, topic):
         sys.exit(1)
 
 
+@cli.command(name='argilla-reset-registry')
+@click.option('--source', 'source_name', required=True, type=click.Choice(['crunchbase', 'gtr', 'hansard'], case_sensitive=False),
+              help='Data source to reset sampling registry for')
+@click.option('--no-remote', is_flag=True, default=False, help='Do not delete remote S3 registry object')
+@click.option('--delete-datasets/--keep-datasets', default=True, help='Also delete Argilla datasets for this source')
+@click.option('--workspace', default='admin', show_default=True, help='Argilla workspace to target when deleting datasets')
+@click.pass_context
+def argilla_reset_registry(ctx, source_name, no_remote, delete_datasets, workspace):
+    """Reset Argilla sampling registry for a source (local, S3, and datasets)."""
+    try:
+        source_name = source_name.lower()
+        mission = ctx.obj['mission']
+        cache_dir = ctx.obj['runner'].cache_dir
+
+        from discovery_mission_radar.pipeline.data_sources.argilla import reset_sampling_registry, delete_argilla_datasets_for_source
+
+        ok = reset_sampling_registry(mission, source_name, cache_dir, delete_remote=not no_remote)
+        if ok:
+            click.echo(f"Sampling registry reset completed for {mission}/{source_name}")
+        else:
+            click.echo(f"Sampling registry reset completed with warnings for {mission}/{source_name}")
+
+        if delete_datasets:
+            deleted = delete_argilla_datasets_for_source(mission, source_name, workspace=workspace)
+            click.echo(f"Deleted {deleted} Argilla dataset(s) for {mission}/{source_name} in workspace '{workspace}'")
+    except Exception as e:
+        click.echo(f"Error: Command failed: {e}", err=True)
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli() 
