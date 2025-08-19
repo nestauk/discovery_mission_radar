@@ -15,16 +15,10 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "argilla>=2.8.0",
-    "black>=22.0.0",
     "click>=8.0.0",
     "discovery-utils",
-    "flake8>=6.0.0",
-    "jupytext>=1.17.1",
-    "mypy>=1.0.0",
     "numpy>=1.24.0",
     "pandas>=1.5.0",
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
     "pyyaml>=6.0",
     "scikit-learn>=1.2.0",
     "scipy>=1.10.0",
@@ -37,7 +31,7 @@ repository = "https://github.com/nestauk/discovery_mission_radar"
 issues = "https://github.com/nestauk/discovery_mission_radar/issues"
 
 [dependency-groups]
-dev = ["ipykernel", "jupytext", "ruff", "pytest", "pre-commit"]
+dev = ["ipykernel", "jupytext", "ruff", "pytest", "pytest-cov", "pre-commit"]
 
 [tool.jupytext]
 # Always pair ipynb notebooks to py:percent files
