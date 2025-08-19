@@ -47,8 +47,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
         
         self.logger.info(f"Found {len(projects_df)} projects for category '{category_name}' after pre-filtering")
             
-        # Run LLM relevance check only on pre-filtered projects with mission context
-        relevant_ids = self._run_relevance_check(projects_df, config, cache_dir, topic_name, getter, mission)
+        relevant_ids = self._run_relevance_check(projects_df, config, cache_dir, topic_name, getter, mission, **kwargs)
         
         return relevant_ids, len(projects_df)
     
@@ -106,7 +105,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
     
     def _run_relevance_check(self, projects_df: pd.DataFrame, config: Dict, 
                            cache_dir: Path, topic_name: str, gtr_getter: gtr.GtrGetter,
-                           mission: str = None) -> List[str]:
+                           mission: str = None, **kwargs) -> List[str]:
         """Run LLM relevance check for GtR projects."""
         
         # Get projects text for relevance checking
@@ -128,6 +127,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
             topic_name,
             "gtr",
             mission or "Unknown",
+            pipeline_config=kwargs.get('pipeline_config'),
             custom_instructions=custom_instructions
         )
     

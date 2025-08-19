@@ -41,7 +41,8 @@ class BaseDataSource(ABC, Generic[GetterType]):
         self.logger = logging.getLogger(f"{__name__}.{source_name}")
     
     def get_data(self, topic_name: str, cache_dir: Path, config: Dict[str, Any], 
-                 getter: Optional[GetterType] = None, mission: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+                 getter: Optional[GetterType] = None, mission: Optional[str] = None, 
+                 pipeline_config: Optional[Dict] = None, **kwargs) -> Dict[str, Any]:
         """Get data for a topic without local data caching (Template Method).
         
         This is the main public interface that follows the template method pattern:
@@ -58,6 +59,7 @@ class BaseDataSource(ABC, Generic[GetterType]):
             config: Topic configuration dictionary
             getter: Pre-initialised getter instance (optional)
             mission: Current mission (AHL/ASF) for S3 cache paths (optional)
+            pipeline_config: Pipeline configuration for Argilla integration (optional)
             **kwargs: Additional source-specific arguments
             
         Returns:
@@ -76,10 +78,9 @@ class BaseDataSource(ABC, Generic[GetterType]):
         if getter is None:
             getter = self._create_default_getter()
         
-        # Fetch fresh data using source-specific implementation
-        # Pass mission context for S3 cache paths
         relevant_ids, total_count = self._fetch_fresh_data(
-            topic_name, config, getter, cache_dir, mission=mission, **kwargs
+            topic_name, config, getter, cache_dir, mission=mission, 
+            pipeline_config=pipeline_config, **kwargs
         )
         
         # Prepare standardised result
@@ -121,7 +122,7 @@ class BaseDataSource(ABC, Generic[GetterType]):
             config: Topic configuration dictionary
             getter: Initialised getter instance
             cache_dir: Cache directory for intermediate files
-            **kwargs: Additional source-specific arguments (including mission)
+            **kwargs: Additional source-specific arguments (including mission and pipeline_config)
             
         Returns:
             Tuple of (relevant_ids, total_count_before_relevance_check)

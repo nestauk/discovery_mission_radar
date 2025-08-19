@@ -4,7 +4,7 @@ Hansard data fetching
 import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Any
-from discovery_utils.synthesis.policy import policy_update
+from discovery_utils.getters import hansard
 from discovery_utils.utils.llm import batch_check
 import asyncio
 import re
@@ -16,22 +16,22 @@ from .utils import run_llm_relevance_check
 logger = logging.getLogger(__name__)
 
 
-class HansardDataSource(BaseDataSource[policy_update.HansardData]):
+class HansardDataSource(BaseDataSource[hansard.HansardGetter]):
     """Hansard data source implementation."""
     
     def __init__(self):
         super().__init__("hansard")
     
-    def _create_default_getter(self) -> policy_update.HansardData:
-        """Create default HansardData instance."""
-        return policy_update.HansardData()
+    def _create_default_getter(self) -> hansard.HansardGetter:
+        """Create default HansardGetter instance."""
+        return hansard.HansardGetter()
     
     def _get_item_type(self) -> str:
         """Return the item type for Hansard (speeches)."""
         return "speeches"
     
     def _fetch_fresh_data(self, topic_name: str, config: Dict[str, Any], 
-                         getter: policy_update.HansardData, cache_dir: Path, 
+                         getter: hansard.HansardGetter, cache_dir: Path, 
                          use_llm_check: bool = False, mission: str = None, **kwargs) -> tuple[List[str], int]:
         """Fetch fresh data from Hansard and return relevant speech IDs."""
         
@@ -43,20 +43,20 @@ class HansardDataSource(BaseDataSource[policy_update.HansardData]):
         
         if use_llm_check:
             # Run LLM relevance check if requested with mission context
-            relevant_ids = self._run_relevance_check(speeches_df, config, cache_dir, topic_name, mission)
+            relevant_ids = self._run_relevance_check(speeches_df, config, cache_dir, topic_name, mission, **kwargs)
         else:
             # Just return all IDs (mirroring original notebook behaviour)
             relevant_ids = speeches_df['speech_id'].unique().tolist()
             
         return relevant_ids, len(speeches_df)
     
-    def _get_speeches_data(self, HansardData: policy_update.HansardData, category_name: str) -> pd.DataFrame:
-        """Get speeches data for a specific category"""
+    def _get_speeches_data(self, getter: hansard.HansardGetter, category_name: str) -> pd.DataFrame:
+        """Get speeches data for the given category."""
         
         speeches_df = (
-            HansardData.debates_df
+            getter.get_debates_parquet()
             .merge(
-                HansardData.labelstore_df[['id', 'topic_labels']],
+                getter.get_labelstore(keywords=True)[['id', 'topic_labels']],
                 left_on='speech_id',
                 right_on='id',
                 how='left'
@@ -71,7 +71,7 @@ class HansardDataSource(BaseDataSource[policy_update.HansardData]):
         return speeches_df
     
     def _run_relevance_check(self, speeches_df: pd.DataFrame, config: Dict, 
-                           cache_dir: Path, topic_name: str, mission: str = None) -> List[str]:
+                           cache_dir: Path, topic_name: str, mission: str = None, **kwargs) -> List[str]:
         """Run LLM relevance check for Hansard speeches."""
         
         # Get mission-aware custom instructions
@@ -81,7 +81,7 @@ class HansardDataSource(BaseDataSource[policy_update.HansardData]):
         speeches_with_text = speeches_df.copy()
         speeches_with_text['text'] = speeches_with_text['speech'].apply(lambda x: re.sub(r"\s+", " ", str(x)))
         
-        # Use shared LLM relevance check function
+        # Use shared LLM relevance check function with pipeline config for Argilla
         return run_llm_relevance_check(
             speeches_with_text,
             config,
@@ -89,6 +89,7 @@ class HansardDataSource(BaseDataSource[policy_update.HansardData]):
             topic_name,
             "hansard",
             mission or "Unknown",
+            pipeline_config=kwargs.get('pipeline_config'),
             id_column='speech_id',
             text_column='text',
             custom_instructions=custom_instructions
