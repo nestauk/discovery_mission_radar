@@ -629,13 +629,13 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
     
     s3_cache = S3CacheManager(mission)
     if not s3_cache.enabled:
-        logger.info("S3 is not configured (S3_BUCKET missing). Skipping Argilla user provisioning.")
+        logger.debug("S3 is not configured (S3_BUCKET missing). Skipping Argilla user provisioning.")
         return {"created": 0, "existing": 0, "errors": 0}
     
     try:
         users_data = _download_obj(s3_cache.s3, s3_cache.bucket_name, key, download_as='list')
     except Exception as e:
-        logger.info(f"No Argilla users credentials found in S3 at '{key}': {e}")
+        logger.debug(f"No Argilla users credentials found in S3 at '{key}': {e}")
         return {"created": 0, "existing": 0, "errors": 0}
     
     if not isinstance(users_data, list):
@@ -644,7 +644,7 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
     
     client = get_argilla_client()
     if not _is_owner(client):
-        logger.warning("Current Argilla user is not 'owner'. Skipping user provisioning.")
+        logger.debug("Current Argilla user is not 'owner'. Skipping user provisioning.")
         return {"created": 0, "existing": 0, "errors": 0}
     
     created = 0
@@ -673,12 +673,12 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
             try:
                 user_obj.create()
                 created += 1
-                logger.info(f"Created Argilla user: {username}")
+                logger.debug(f"Created Argilla user: {username}")
             except Exception as ce:
                 msg = str(ce).lower()
                 if "exist" in msg or "already" in msg or "409" in msg:
                     existing += 1
-                    logger.info(f"User already exists: {username}")
+                    logger.debug(f"User already exists: {username}")
                     try:
                         user_obj = client.users(username)
                     except Exception:
@@ -693,13 +693,16 @@ def ensure_users_from_s3(mission: str, key: str = "credentials/argilla_users.jso
                     workspace = client.workspaces(ws_name)
                     if workspace and hasattr(user_obj, 'add_to_workspace'):
                         user_obj.add_to_workspace(workspace)
-                        logger.info(f"Added {username} to workspace: {ws_name}")
+                        logger.debug(f"Added {username} to workspace: {ws_name}")
                 except Exception as e_ws:
-                    logger.warning(f"Could not add {username} to workspace {ws_name}: {e_ws}")
+                    logger.debug(f"Could not add {username} to workspace {ws_name}: {e_ws}")
         except Exception as e:
             errors += 1
             logger.error(f"Error provisioning user from entry {entry}: {e}")
     
     summary = {"created": created, "existing": existing, "errors": errors}
-    logger.info(f"Argilla user provisioning summary: {summary}")
-    return summary 
+    if created > 0 or errors > 0:
+        logger.info(f"Argilla user provisioning summary: {summary}")
+    else:
+        logger.debug(f"Argilla user provisioning summary: {summary}")
+    return summary

@@ -30,6 +30,19 @@ def setup_logging(level: str = "INFO"):
         ]
     )
 
+    # Reduce verbosity from third-party libraries unless explicitly running in DEBUG
+    if level.upper() != "DEBUG":
+        for noisy_logger in [
+            "httpx",
+            "argilla",
+            "argilla.sdk",
+            "urllib3",
+        ]:
+            try:
+                logging.getLogger(noisy_logger).setLevel(logging.WARNING)
+            except Exception:
+                pass
+
 def run_single_topic(runner: MissionRadarRunner, topic_name: str, mission: str, output_dir: Path = None):
     """Run analysis for a single topic"""
     logger = logging.getLogger(__name__)
@@ -169,31 +182,37 @@ def list_topics(runner: MissionRadarRunner, mission: str):
     logger.info(f"Listing topics for mission: {mission}")
     
     try:
-        topics = runner.list_available_topics()
+        # Get regular topics from config files
+        config_topics = runner.list_available_topics()
+        
+        # Get native categories from config
+        from discovery_mission_radar.pipeline.config_manager import get_pipeline_config
+        config = get_pipeline_config(mission)
+        native_categories = config.get_crunchbase_native_categories(mission)
         
         print(f"\n=== Available Topics for {mission} Mission ===")
         
-        if not topics:
+        if not config_topics and not native_categories:
             print("No topics found for this mission.")
             return
-        
-        # Group topics by type
-        config_topics = [t for t in topics if not t.get('native_category')]
-        native_topics = [t for t in topics if t.get('native_category')]
         
         if config_topics:
             print(f"\nConfiguration-based Topics ({len(config_topics)}):")
             for topic in config_topics:
-                print(f"  - {topic['name']}")
+                print(f"  - {topic}")
         
-        if native_topics:
-            print(f"\nCrunchbase Native Categories ({len(native_topics)}):")
-            for topic in native_topics:
-                print(f"  - {topic['name']} (native: {topic['native_category']})")
+        if native_categories:
+            print(f"\nCrunchbase Native Categories ({len(native_categories)}):")
+            for topic_name, native_category in native_categories.items():
+                print(f"  - {topic_name} (native: {native_category})")
         
-        print(f"\nTotal: {len(topics)} topics available")
+        total_topics = len(config_topics) + len(native_categories)
+        print(f"\nTotal: {total_topics} topics available")
         
-        return topics
+        return {
+            'config_topics': config_topics,
+            'native_categories': native_categories
+        }
         
     except Exception as e:
         logger.error(f"Failed to list topics: {e}")
@@ -322,7 +341,7 @@ def show_config(mission: str):
         logger.error(f"Failed to show configuration: {e}")
         raise
 
-@click.group()
+@click.group(context_settings={'max_content_width': 120})
 @click.option('--mission', required=True, type=click.Choice(['AHL', 'ASF'], case_sensitive=False), 
               help='Mission to process (REQUIRED). AHL: A Healthy Life, ASF: A Sustainable Future.')
 @click.option('--config-dir', type=click.Path(exists=True), 
@@ -335,22 +354,34 @@ def show_config(mission: str):
 @click.pass_context
 def cli(ctx, mission, config_dir, output_dir, log_level):
     """Mission Radar Pipeline CLI
-    
+
     Orchestrates data sources + analysis functions with support for manual review via Argilla.
-    
+
     Examples:
-      python -m discovery_mission_radar.pipeline.cli --mission AHL comprehensive
-      python -m discovery_mission_radar.pipeline.cli --mission ASF run hydrogen_energy
-      python -m discovery_mission_radar.pipeline.cli --mission ahl batch heat_pumps solar
-      
-      # List topics for specific mission
-      python -m discovery_mission_radar.pipeline.cli --mission AHL list
-      
-      # Show configuration with mission context
-      python -m discovery_mission_radar.pipeline.cli --mission ASF config
-      
-      # Argilla manual review commands
-      python -m discovery_mission_radar.pipeline.cli --mission ASF argilla-status
+
+    Run comprehensive analysis for AHL mission:
+
+        python -m discovery_mission_radar.pipeline.cli --mission AHL comprehensive
+
+    Run single topic analysis:
+
+        python -m discovery_mission_radar.pipeline.cli --mission ASF run hydrogen_energy
+
+    Run batch analysis for multiple topics:
+
+        python -m discovery_mission_radar.pipeline.cli --mission ahl batch heat_pumps solar
+
+    List topics for specific mission:
+
+        python -m discovery_mission_radar.pipeline.cli --mission AHL list
+
+    Show configuration with mission context:
+
+        python -m discovery_mission_radar.pipeline.cli --mission ASF config
+
+    Check Argilla review status:
+
+        python -m discovery_mission_radar.pipeline.cli --mission ASF argilla-status
     """
     # Ensure context object exists
     ctx.ensure_object(dict)
@@ -381,9 +412,9 @@ def cli(ctx, mission, config_dir, output_dir, log_level):
 
     try:
         from discovery_mission_radar.pipeline.data_sources.argilla import ensure_users_from_s3
-        click.echo("Provisioning Argilla users from S3: credentials/argilla_users.json")
         summary = ensure_users_from_s3(ctx.obj['mission'], key='credentials/argilla_users.json')
-        click.echo(f"Argilla users: created={summary['created']} existing={summary['existing']} errors={summary['errors']}")
+        if summary['created'] > 0 or summary['errors'] > 0:
+            click.echo(f"Argilla users: created={summary['created']} existing={summary['existing']} errors={summary['errors']}")
     except Exception as e:
         click.echo(f"Warning: Argilla user provisioning skipped: {e}")
 
