@@ -88,12 +88,10 @@ async def get_entities_to_sample(
             key = _registry_s3_key(mission, source_name)
             registry = _download_obj(s3_cache.s3, s3_cache.bucket_name, key, download_as='dict')
             logger.info(f"Downloaded Argilla sampling registry from S3: s3://{s3_cache.bucket_name}/{key}")
-            # Persist local copy
             registry_file.parent.mkdir(parents=True, exist_ok=True)
             registry_file.write_text(json.dumps(registry, indent=2), encoding="utf-8")
         except Exception as e:
             logger.info(f"No remote sampling registry found yet for {source_name}: {e}")
-            # Fallback to local file if present
             if registry_file.exists():
                 try:
                     registry = json.loads(registry_file.read_text(encoding="utf-8"))
@@ -137,7 +135,6 @@ async def get_entities_to_sample(
     
     available['hash'] = available['id'].apply(lambda x: hash(f"{x}_{quarter}_{topic}_{source_name}"))
 
-    # Determine remaining capacity for this topic/quarter to avoid oversampling across runs
     existing_ids = []
     if key_prefix in registry:
         existing_ids = registry[key_prefix].get('entity_ids', [])
@@ -283,14 +280,12 @@ def delete_argilla_datasets_for_source(mission: str, source_name: str, workspace
         for ds in datasets:
             try:
                 if getattr(ds, 'name', '').startswith(prefix):
-                    # Try dataset-bound delete first, then client-based
                     if hasattr(ds, 'delete'):
                         ds.delete()
                     else:
                         try:
                             client.datasets.delete(ds)
                         except Exception:
-                            # Fallback: retrieve by name and delete
                             try:
                                 resolved = client.datasets(ds.name, workspace=workspace)
                                 if hasattr(resolved, 'delete'):
@@ -316,7 +311,8 @@ def export_to_argilla(
     quarter: str, 
     mission: str, 
     config: Dict,
-    source_name: str
+    source_name: str,
+    guidelines: str | None = None
 ) -> bool:
     """Export entities to Argilla for manual review."""
     try:
@@ -385,7 +381,8 @@ def export_to_argilla(
                         rg.TermsMetadataProperty(name="quarter", title="Quarter"),
                         rg.TermsMetadataProperty(name="mission", title="Mission"),
                         rg.TermsMetadataProperty(name="llm_decision", title="LLM Decision")
-                    ]
+                    ],
+                    guidelines=guidelines if guidelines else None
                 )
                 
                 dataset = rg.Dataset(
@@ -399,6 +396,20 @@ def export_to_argilla(
             if not dataset or not hasattr(dataset, 'settings') or not dataset.settings:
                 logger.error(f"Dataset {dataset_name} still has no settings after creation/retrieval")
                 return False
+            
+            # Try to update guidelines on existing dataset if provided
+            if guidelines:
+                try:
+                    # If settings object supports guidelines update
+                    if hasattr(dataset, 'settings') and hasattr(dataset.settings, 'guidelines'):
+                        dataset.settings.guidelines = guidelines
+                        try:
+                            client.datasets.update(dataset)
+                        except Exception:
+                            pass
+                        logger.info(f"Applied annotation guidelines to dataset: {dataset_name}")
+                except Exception as e_guidelines:
+                    logger.warning(f"Could not set guidelines for dataset {dataset_name}: {e_guidelines}")
             
             records = []
             for _, row in export_df.iterrows():

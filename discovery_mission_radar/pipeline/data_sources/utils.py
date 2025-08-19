@@ -69,14 +69,11 @@ class S3CacheManager:
         try:
             logger.info(f"Attempting to download cache from S3: {s3_path}")
             
-            # Use boto3 directly to download the file to avoid file extension limitations
             response = self.s3.get_object(Bucket=self.bucket_name, Key=s3_path)
             content = response['Body'].read().decode('utf-8')
             
-            # Ensure local directory exists
             local_file.parent.mkdir(parents=True, exist_ok=True)
             
-            # Write to local file
             with open(local_file, 'w') as f:
                 f.write(content)
                 
@@ -106,11 +103,9 @@ class S3CacheManager:
         try:
             logger.debug(f"Uploading cache to S3: {s3_path}")
             
-            # Read file content as bytes
             with open(local_file, 'rb') as f:
                 content = f.read()
             
-            # Upload asynchronously using boto3 directly to avoid file extension limitations
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None,
@@ -118,7 +113,7 @@ class S3CacheManager:
                     Bucket=self.bucket_name,
                     Key=s3_path,
                     Body=content,
-                    ContentType='application/x-ndjson'  # Proper MIME type for JSONL
+                    ContentType='application/x-ndjson'
                 )
             )
             
@@ -215,7 +210,6 @@ async def run_llm_relevance_check_async(
             logger.warning(f"Could not read existing {source_name} relevance check results: {e}")
             existing_results = {}
     
-    # Identify entities that need LLM checking
     already_checked_ids = set(existing_results.keys())
     new_ids_to_check = current_item_ids - already_checked_ids
     
@@ -224,18 +218,14 @@ async def run_llm_relevance_check_async(
     logger.info(f"  Already checked: {len(already_checked_ids)}")
     logger.info(f"  New entities to check: {len(new_ids_to_check)}")
     
-    # Run LLM check only on new entities (if any)
     if new_ids_to_check:
         logger.info(f"Running {source_name} LLM relevance check on {len(new_ids_to_check)} new entities for {topic_name}")
         
-        # Get text data for only the new entities
         new_items_df = items_df[items_df[id_column].isin(new_ids_to_check)]
         check_data = dict(zip(new_items_df[id_column], new_items_df[text_column]))
         
-        # Generate system message
         system_message = batch_check.generate_relevance_check_system_message(config)
         
-        # Add custom instructions if provided
         if custom_instructions:
             system_message += custom_instructions
         
@@ -251,7 +241,6 @@ async def run_llm_relevance_check_async(
             output_fields=fields,
         )
         
-        # Ensure cache directory exists
         cache_dir.mkdir(parents=True, exist_ok=True)
         
         try:
@@ -266,13 +255,11 @@ async def run_llm_relevance_check_async(
         logger.info(f"LLM relevance check completed for {topic_name}: {len(new_ids_to_check)} new entities processed")
     else:
         logger.info(f"All entities already checked for {topic_name}, skipping LLM calls")
-        # Rebuild from cache to preserve fields like 'explanation' for consistency
         try:
             relevant_check_df = existing_df.copy()
             if 'explanation' not in relevant_check_df.columns:
                 relevant_check_df['explanation'] = ''
         except Exception:
-            # Fallback minimal shape
             relevant_check_df = pd.DataFrame([
                 {'id': entity_id, 'is_relevant': is_relevant}
                 for entity_id, is_relevant in existing_results.items()
@@ -287,9 +274,19 @@ async def run_llm_relevance_check_async(
             argilla_config = pipeline_config['argilla']
             sample_size = argilla_config.get('sampling', {}).get('base_sample_size', 10)
             
-            logger.info(f"Argilla sampling enabled - selecting entities for manual review")
+            # Build annotation guidelines from topic scope statements if available
+            guidelines = None
+            try:
+                scope_statements = config.get('search_recipe', {}).get('scope_statements', [])
+                if scope_statements:
+                    header = f"Topic: {topic_name}\n\nScope statements:\n"
+                    body = "\n".join([f"- {s}" for s in scope_statements])
+                    guidelines = header + body
+            except Exception:
+                guidelines = None
             
-            # Build candidate pool: prefer newly processed entities; if none, use all with results
+            logger.info(f"Argilla sampling enabled - selecting entities for manual review")
+
             if new_ids_to_check:
                 candidate_ids = list(new_ids_to_check)
             else:
@@ -297,8 +294,6 @@ async def run_llm_relevance_check_async(
             new_items_with_results = items_df[items_df[id_column].isin(candidate_ids)].copy()
             new_results_df = relevant_check_df[relevant_check_df['id'].isin(candidate_ids)]
             
-            # Merge LLM results with entity data for sampling
-            # Select only columns that exist (older caches may lack 'explanation')
             merge_cols = ['id', 'is_relevant']
             if 'explanation' in new_results_df.columns:
                 merge_cols.append('explanation')
@@ -318,7 +313,8 @@ async def run_llm_relevance_check_async(
                 if entities_to_sample:
                     export_success = export_to_argilla(
                         entities_to_sample, entities_for_sampling, 
-                        topic_name, quarter, mission, argilla_config, source_name
+                        topic_name, quarter, mission, argilla_config, source_name,
+                        guidelines=guidelines
                     )
                     
                     if export_success:
@@ -335,7 +331,6 @@ async def run_llm_relevance_check_async(
         except Exception as e:
             logger.warning(f"Failed to sample and export to Argilla: {e}")
     
-    # Merge results and filter for relevant items
     relevant_checked_df = (
         items_df
         .merge(relevant_check_df[['id', 'is_relevant']], left_on=id_column, right_on='id', how='left')
@@ -408,19 +403,17 @@ async def _llm_processing_with_s3_upload(
     """
     max_retries = 3
     data_size = len(check_data)
-    use_two_stage = data_size > 100  # Use two-stage batching for larger datasets
+    use_two_stage = data_size > 100
     
     for attempt in range(max_retries):
         try:
             logger.info(f"LLM processing attempt {attempt + 1}/{max_retries} ({data_size} items, {'two-stage' if use_two_stage else 'native'} batching)")
             
             if use_two_stage:
-                # Two-stage batching: we control the outer batching, discovery-utils handles inner batching
                 await _process_with_two_stage_batching(
                     processor, check_data, output_file, s3_cache, topic_name, source_name
                 )
             else:
-                # Native batching: let discovery-utils handle everything with periodic S3 uploads
                 await _process_with_native_batching(
                     processor, check_data, output_file, s3_cache, topic_name, source_name
                 )
@@ -434,7 +427,6 @@ async def _llm_processing_with_s3_upload(
                 logger.error("All LLM processing attempts failed")
                 raise
             else:
-                # Exponential backoff: 2^attempt seconds (minimum 10s)
                 wait_time = max(10, 2 ** attempt)
                 logger.info(f"Retrying LLM processing (attempt {attempt + 2}/{max_retries}) after {wait_time}s")
                 await asyncio.sleep(wait_time)
@@ -466,8 +458,7 @@ async def _process_with_native_batching(
     )
     
     try:
-        # Bound overall processing time to avoid indefinite hangs
-        timeout_s = 900  # seconds
+        timeout_s = 900
         try:
             await asyncio.wait_for(
                 processor.process_text_data(check_data),
@@ -478,14 +469,12 @@ async def _process_with_native_batching(
             raise
         
     finally:
-        # Cancel periodic uploads and do final upload
         upload_task.cancel()
         try:
             await upload_task
         except asyncio.CancelledError:
             pass
         
-        # Final upload to S3 after completion
         await s3_cache.upload_cache_to_s3_async(topic_name, source_name, output_file)
 
 
@@ -498,10 +487,9 @@ async def _process_with_two_stage_batching(
     source_name: str
 ) -> None:
     """Process large datasets using two-stage batching for better control and progress visibility."""
-    outer_batch_size = 50  # Our outer batch size
-    max_inner_retries = 3  # Retries per outer batch
+    outer_batch_size = 50 
+    max_inner_retries = 3
     
-    # Convert check_data to list of items for outer batch processing
     items = list(check_data.items())
     total_items = len(items)
     
@@ -515,25 +503,22 @@ async def _process_with_two_stage_batching(
         
         logger.info(f"Processing outer batch {outer_batch_num}/{total_outer_batches} ({len(outer_batch_items)} items)")
         
-        # Retry logic per outer batch
         for inner_attempt in range(max_inner_retries):
             try:
-                # Time-bound this outer batch
-                per_item =0.5  # seconds per item
-                max_batch = 900  # hard cap per outer batch
+                per_item =0.5
+                max_batch = 900
                 timeout_s = min(max_batch, per_item * len(outer_batch_items) + 30)
                 await asyncio.wait_for(
                     processor.process_text_data(outer_batch_data),
                     timeout=timeout_s,
                 )
                 logger.debug(f"Outer batch {outer_batch_num} completed successfully")
-                break  # Success, move to next outer batch
+                break
                 
             except asyncio.TimeoutError:
                 logger.warning(
                     f"Outer batch {outer_batch_num} timed out after {timeout_s}s on attempt {inner_attempt + 1}/{max_inner_retries}"
                 )
-                # Resume: remove any IDs already processed and retry remaining only
                 processed_ids = _read_processed_ids(output_file)
                 remaining = {k: v for k, v in outer_batch_data.items() if k not in processed_ids}
                 if not remaining:
@@ -550,7 +535,6 @@ async def _process_with_two_stage_batching(
                     logger.error(f"Outer batch {outer_batch_num} failed after {max_inner_retries} attempts")
                     raise
                 else:
-                    # Exponential backoff for inner retries: 2^attempt seconds
                     wait_time = 2 ** inner_attempt
                     logger.info(f"Retrying outer batch {outer_batch_num} (attempt {inner_attempt + 2}/{max_inner_retries}) after {wait_time}s")
                     await asyncio.sleep(wait_time)
@@ -561,7 +545,6 @@ async def _process_with_two_stage_batching(
             if upload_success:
                 logger.debug(f"Uploaded outer batch {outer_batch_num} progress to S3")
         
-        # Sleep between outer batches (except for the last one)
         if i + outer_batch_size < total_items:
             await asyncio.sleep(0.5)
 
@@ -592,5 +575,4 @@ async def _periodic_s3_upload(
                     logger.debug(f"Periodic S3 upload completed for {source_name} {topic_name}")
                     
     except asyncio.CancelledError:
-        # Task was cancelled, which is expected when processing completes
         logger.debug("Periodic S3 upload task cancelled") 
