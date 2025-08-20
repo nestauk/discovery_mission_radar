@@ -94,16 +94,12 @@ class CrunchbaseAnalysisModule(BaseAnalysisModule[cb.CrunchbaseGetter]):
         matching_ids = topic_data['ids']
         config = self.config
         
-        # Core funding round types
-        funding_round_types = ["angel", "pre_seed", "seed", "series_a", "series_b"]
-        
         # Get matching organisations
         matchings_orgs_df = getter.organisations_enriched.query("id in @matching_ids")
         
         # Get funding rounds
         funding_rounds_df = getter.select_funding_rounds(
-            org_ids=matching_ids, 
-            funding_round_types=funding_round_types
+            org_ids=matching_ids
         )
         
         # Get investors for funding rounds
