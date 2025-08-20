@@ -16,7 +16,6 @@ requires-python = ">=3.10"
 dependencies = [
     "argilla>=2.8.0",
     "click>=8.0.0",
-    "discovery-utils",
     "numpy>=1.24.0",
     "pandas>=1.5.0",
     "pyyaml>=6.0",
@@ -24,6 +23,7 @@ dependencies = [
     "scipy>=1.10.0",
     "structlog>=22.0.0",
     "vl-convert-python>=0.2.2",
+    "discovery-utils>=0.1.1",
 ]
 
 [project.urls]
