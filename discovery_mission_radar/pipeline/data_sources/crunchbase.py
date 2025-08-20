@@ -12,7 +12,7 @@ import json
 import logging
 
 from .base import BaseDataSource
-from .utils import run_llm_relevance_check
+from .utils import run_llm_relevance_check, load_llm_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +61,8 @@ class CrunchbaseDataSource(BaseDataSource[crunchbase.CrunchbaseGetter]):
             .merge(selected_texts_df[['id', 'text']], left_on='id', right_on='id', how='left')
         )
         
-        # Get mission-aware custom instructions
         custom_instructions = self._get_mission_specific_instructions(mission or "Unknown")
         
-        # Use shared LLM relevance check function with mission context and pipeline config for Argilla
         return run_llm_relevance_check(
             companies_with_text,
             config,
@@ -77,67 +75,22 @@ class CrunchbaseDataSource(BaseDataSource[crunchbase.CrunchbaseGetter]):
         )
     
     def _get_mission_specific_instructions(self, mission: str) -> str:
-        """Get custom instructions tailored to the specific mission."""
-        
-        if mission == "ASF":
-            return """
-            Mark the text as 'yes' if (one or more of the following):
-            - If the technology defined by the scope above, is the main focus
-            - If the technology is one of the components or activities described by the text. For example the technology could be mentioned
-                as part of a larger project or business including other technologies, or be mentioned as one of the use cases or case studies.
-            - If the text describes a company and the technology is the main focus, or a part of a broader range of the company's activities and offerings.
-            - If the text is about a component or critical element of the technology defined above
-            - If the text describes a technology or process and explicitly mentions that it can be applied on the technology defined above to improve its performance or efficiency.
-
-            If the text is about heating technology but application target is not mentioned then assume it could be relevant for households or buildings (as opposed to industrial applications).
-
-            However, mark it as 'no' if (one or more of the following):
-            - The activities, or business described in the text does not have a discernible impact on or connection with the technology.
-            - If the technology is mentioned only in passing or as a minor example in a broader discussion, for example, 
-                in only one sentence within a long text with many sentences, or at the very end of a long description.
-            - The technology is mentioned only as a negative example (eg "unlike [technology]...")
-            - The text mentions heat pumps for heating swimming pools  
-            - The text would be better captured by one of the other categories (comma separated) mentioned in this list:  
-            Bioenergy (biofuels), Biomass heating, Carbon capture and storage, District heating and heat networks, Energy grid, Geothermal energy, 
-            Heat pumps, Hydrogen energy, Hydrogen heating, Micro CHP, Solar thermal heating, Energy storage (batteries), Solar power, Wind power
-            """
-            
-        elif mission == "AHL":
-            return """
-            Mark the text as 'yes' if (one or more of the following):
-            - If the topic/area defined by the scope above is the main focus of the company or business
-            - If the topic is one of the components or business areas described by the text. For example the topic could be mentioned
-                as part of a larger food/health company including other business areas, or be mentioned as one of the use cases or products.
-            - If the text describes a company and the topic is the main focus, or a part of a broader range of the company's activities and offerings.
-            - If the text is about a component or critical element of the topic/area defined above
-            - If the text describes products, services, or approaches that explicitly mention they can be applied to the topic defined above to improve health outcomes or address food-related challenges.
-
-            Consider food technology, nutrition, obesity prevention, food systems, dietary solutions, food delivery, food production, and related health business areas as relevant contexts.
-
-            However, mark it as 'no' if (one or more of the following):
-            - The activities, or business described in the text does not have a discernible impact on or connection with the topic.
-            - If the topic is mentioned only in passing or as a minor example in a broader discussion, for example, 
-                in only one sentence within a long text with many sentences, or at the very end of a long description.
-            - The topic is mentioned only as a negative example (eg "unlike [topic]...")
-            - The text would be better captured by one of the other categories (comma separated) mentioned in this list:
-            Alternative proteins (general), Plant-based foods, Cloud kitchens, Food delivery apps, Fermentation, Food advertisement, 
-            Food tech (general), Health (general), Insects as food, Kitchen technology, Lab-grown meat, Meal kits, 
-            Personalised nutrition, Restaurants, Food retail, Supply chain, Weight management, Weight-loss drugs, 
-            Food reformulation (general), Food reformulation (sugar), Food reformulation (salt), Food reformulation (fat), Food reformulation (fiber)
-            """
-            
-        else:
-            # Generic instructions for unknown missions
-            return """
-            Mark the text as 'yes' if (one or more of the following):
-            - If the topic/area defined by the scope above is the main focus of the company or business
-            - If the topic is one of the components or business areas described by the text
-            - If the text describes a company where the topic is the main focus, or a significant part of the activities
-            - If the text is about a component or critical element of the topic defined above
-            - If the text describes products or services that can be applied to the topic defined above
-
-            However, mark it as 'no' if (one or more of the following):
-            - The activities described in the text do not have a discernible impact on or connection with the topic.
-            - If the topic is mentioned only in passing or as a minor example
-            - The topic is mentioned only as a negative example
-            """
+        """Get mission/source instructions from central YAML; no in-code prompts."""
+        try:
+            base_config_dir = Path(__file__).parent.parent / "config"
+            prompts = load_llm_prompts(base_config_dir)
+            key = mission if mission in prompts else "default"
+            mission_prompts = prompts.get(key, {})
+            source_key = getattr(self, 'source_name', '').lower() or 'crunchbase'
+            text = (
+                mission_prompts.get(source_key)
+                or mission_prompts.get("default")
+                or (prompts.get("default", {}) or {}).get("default")
+            )
+            if text:
+                return text
+            self.logger.warning(f"No LLM prompt found in YAML for mission={mission}, source={source_key}; proceeding without custom instructions")
+            return ""
+        except Exception as e:
+            self.logger.warning(f"Failed loading LLM prompts: {e}; proceeding without custom instructions")
+            return ""

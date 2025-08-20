@@ -15,8 +15,29 @@ from typing import Dict, List, Optional
 import pandas as pd
 from discovery_utils.utils.llm import batch_check
 from discovery_utils.utils.s3 import s3_client, _download_obj, upload_obj
+import yaml
 
 logger = logging.getLogger(__name__)
+def load_llm_prompts(config_dir: Path) -> Dict[str, Dict[str, str]]:
+    """Load centralised LLM prompts from config/llm_prompts.yaml
+
+    Args:
+        config_dir: Base config directory (project-level)
+
+    Returns:
+        Dict with mission keys and prompt strings
+    """
+    try:
+        prompts_path = config_dir / "llm_prompts.yaml"
+        if not prompts_path.exists():
+            logger.warning(f"LLM prompts file not found at {prompts_path}; using built-in defaults")
+            return {}
+        with open(prompts_path, "r") as f:
+            data = yaml.safe_load(f)
+            return data.get("missions", {}) or {}
+    except Exception as e:
+        logger.warning(f"Failed to load LLM prompts: {e}")
+        return {}
 
 
 class S3CacheManager:
@@ -62,6 +83,28 @@ class S3CacheManager:
             True if download successful, False otherwise
         """
         if not self.enabled:
+            return False
+
+    def delete_cache_from_s3(self, topic_name: str, source_name: str) -> bool:
+        """Delete cache file from S3 if it exists.
+        
+        Args:
+            topic_name: Name of the topic
+            source_name: Name of the data source
+        
+        Returns:
+            True if deletion command succeeded, False otherwise.
+        """
+        if not self.enabled:
+            return False
+        s3_path = self.get_s3_path(topic_name, source_name)
+        try:
+            logger.info(f"Attempting to delete cache from S3: {s3_path}")
+            self.s3.delete_object(Bucket=self.bucket_name, Key=s3_path)
+            logger.info(f"Successfully issued delete for S3 cache: {s3_path}")
+            return True
+        except Exception as e:
+            logger.info(f"Could not delete cache from S3: {e}")
             return False
             
         s3_path = self.get_s3_path(topic_name, source_name)
@@ -303,6 +346,19 @@ async def run_llm_relevance_check_async(
                 right_on='id', 
                 how='inner'
             )
+            
+            # Ensure required columns for Argilla helpers
+            if 'id' not in entities_for_sampling.columns:
+                try:
+                    entities_for_sampling['id'] = entities_for_sampling[id_column]
+                except Exception:
+                    pass
+            if 'text' not in entities_for_sampling.columns:
+                try:
+                    if text_column in new_items_with_results.columns:
+                        entities_for_sampling['text'] = new_items_with_results[text_column]
+                except Exception:
+                    pass
             
             if len(entities_for_sampling) > 0:
                 entities_to_sample = await get_entities_to_sample(

@@ -105,7 +105,7 @@ data_sources:
     
   hansard:
     enabled: true
-    run_llm_check: false  # Use pre-existing topic labels by default
+    run_llm_check: true  # Use pre-existing topic labels by default
     excluded_topics:
       ASF: [
         "renewables_general",    

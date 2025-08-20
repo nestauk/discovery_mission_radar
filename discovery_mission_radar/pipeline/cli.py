@@ -646,5 +646,72 @@ def argilla_reset_registry(ctx, source_name, no_remote, delete_datasets, workspa
         sys.exit(1)
 
 
+@cli.command(name='reset-relevance-cache')
+@click.argument('topic_name')
+@click.option('--source', 'sources', multiple=True, type=click.Choice(['crunchbase', 'gtr', 'hansard'], case_sensitive=False),
+              help='Specific source(s) to reset (repeat flag for multiple). Defaults to all sources if not provided.')
+@click.option('--no-remote', is_flag=True, default=False, help='Do not delete remote S3 cache object(s)')
+@click.pass_context
+def reset_relevance_cache(ctx, topic_name, sources, no_remote):
+    """Reset cached LLM relevance checks for a topic so checks rerun next time.
+
+    Deletes local cache file(s) under the mission cache directory and, unless --no-remote is set,
+    also deletes the corresponding S3 object(s) to force a full recomputation on next run.
+    """
+    logger = logging.getLogger(__name__)
+    try:
+        mission = ctx.obj['mission']
+        cache_dir = ctx.obj['runner'].cache_dir
+        from discovery_mission_radar.pipeline.data_sources.utils import S3CacheManager
+
+        if not sources:
+            target_sources = ['crunchbase', 'gtr', 'hansard']
+        else:
+            target_sources = [s.lower() for s in sources]
+
+        s3 = S3CacheManager(mission)
+        deleted_local = 0
+        deleted_remote = 0
+        skipped_remote = 0
+
+        click.echo(f"\nResetting relevance cache for topic '{topic_name}' (Mission: {mission})")
+        click.echo(f"Cache directory: {cache_dir}")
+
+        for source in target_sources:
+            local_file = cache_dir / f"{topic_name}_{source}_relevance_check.jsonl"
+            if local_file.exists():
+                try:
+                    local_file.unlink()
+                    deleted_local += 1
+                    logger.info(f"Deleted local cache: {local_file}")
+                    click.echo(f"  - {source}: deleted local cache")
+                except Exception as e:
+                    click.echo(f"  - {source}: failed to delete local cache: {e}")
+            else:
+                click.echo(f"  - {source}: no local cache found")
+
+            if not no_remote:
+                try:
+                    if s3.delete_cache_from_s3(topic_name, source):
+                        deleted_remote += 1
+                        click.echo(f"    (remote) deleted S3 cache")
+                    else:
+                        click.echo(f"    (remote) S3 cache not found or deletion skipped")
+                except Exception as e:
+                    click.echo(f"    (remote) failed to delete S3 cache: {e}")
+            else:
+                skipped_remote += 1
+
+        click.echo("\nSummary:")
+        click.echo(f"  Local cache files deleted: {deleted_local}")
+        if no_remote:
+            click.echo(f"  Remote S3 deletion: skipped for {skipped_remote} source(s)")
+        else:
+            click.echo(f"  Remote S3 objects deleted: {deleted_remote}")
+
+    except Exception as e:
+        click.echo(f"Error: Command failed: {e}", err=True)
+        sys.exit(1)
+
 if __name__ == "__main__":
     cli() 

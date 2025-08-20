@@ -169,9 +169,20 @@ class MissionRadarRunner:
         if self.pipeline_config.should_run_source_for_topic(topic_name, 'hansard'):
             if has_config:
                 logger.info("Processing Hansard data source")
+                # Determine if LLM relevance check should run (pipeline-level or topic-level override)
+                topic_llm_override = False
+                try:
+                    sr = (topic_config.get('search_recipe', {}) or {})
+                    topic_llm_override = bool(
+                        topic_config.get('hansard_llm_check', False)
+                        or sr.get('hansard_llm_check', False)
+                    )
+                except Exception:
+                    topic_llm_override = False
+                use_llm = self.pipeline_config.should_run_llm_check('hansard') or topic_llm_override
                 hansard_data = self.data_sources['hansard'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
-                    use_llm_check=False, mission=self.mission, pipeline_config=self.pipeline_config.to_dict()
+                    use_llm_check=use_llm, mission=self.mission, pipeline_config=self.pipeline_config.to_dict()
                 )
                 hansard_results = self.analysis_modules['hansard'].analyse_topic(
                     hansard_data, topic_output_dir / "hansard", self.getters['hansard']
@@ -498,9 +509,19 @@ class MissionRadarRunner:
         if run_hansard:
             if has_config:
                 logger.info("Processing Hansard data source") 
+                topic_llm_override = False
+                try:
+                    sr = (topic_config.get('search_recipe', {}) or {})
+                    topic_llm_override = bool(
+                        topic_config.get('hansard_llm_check', False)
+                        or sr.get('hansard_llm_check', False)
+                    )
+                except Exception:
+                    topic_llm_override = False
+                use_llm = self.pipeline_config.should_run_llm_check('hansard') or topic_llm_override
                 hansard_data = self.data_sources['hansard'].get_data(
                     topic_name, self.cache_dir, topic_config, self.getters['hansard'], 
-                    use_llm_check=False, mission=self.mission
+                    use_llm_check=use_llm, mission=self.mission, pipeline_config=self.pipeline_config.to_dict()
                 )
                 hansard_analysis_result = self.analysis_modules['hansard'].analyse_topic(
                     hansard_data, topic_output_dir / "hansard", self.getters['hansard']
