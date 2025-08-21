@@ -132,6 +132,29 @@ data_sources:
         "weight"
       ]
 
+  overton:
+    enabled: true
+    # Only configurable knob; all other behaviour is fixed in code
+    window_months: 60
+    # Shared core UK policy sources used across missions
+    core_sources:
+      - govuk
+      - ukparliament_select
+      - ukparliament
+      - legislationgovuk
+      - onsgovuk
+      - scottishgovernment
+      - govwales
+      - northernirelandgovuk
+    # Mission-specific additions (merged with core_sources in implementation)
+    mission_sources:
+      ASF: 
+        - theccc
+      AHL:
+        - nice
+        - nhsengland
+        - foodgovuk
+
 # Categories for cross-topic radar charts
 categories_to_show:
   ASF:
