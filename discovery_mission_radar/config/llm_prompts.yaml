@@ -1,0 +1,91 @@
+missions:
+  ASF:
+    hansard: |
+      Mark 'yes' only if the speech explicitly mentions the configured category in the correct sense (energy technology/solution)
+      AND there is at least one immediate contextual cue (in this speech or the adjacent ones) showing a real connection, such as:
+      - A concrete example, measure, deployment, barrier, evidence, funding, regulation, implementation or performance point
+      - A comparison, trade‑off, target, or plan explicitly tied to the category
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, in lists, rhetorical flourishes, or unrelated contexts
+      - The usage is a different meaning/sense of the word than the configured category
+      - The speech is about generic energy policy without a clear link to the category
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
+    crunchbase: |
+      Mark 'yes' only if the company text explicitly mentions the configured category in the correct sense (energy technology/solution)
+      AND includes at least one concrete cue showing a real connection, such as:
+      - A product, service, solution, deployment, application, component, performance or efficiency point linked to the category
+      - A partnership, customer, use case or market explicitly tied to the category
+      - Funding, certification or regulation clearly relevant to the category
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, in lists, marketing fluff, or unrelated contexts
+      - The usage is a different meaning/sense than the configured category
+      - The description is generic energy/business text without a clear category link
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
+    gtr: |
+      Mark 'yes' only if the project text explicitly mentions the configured category in the correct sense (energy technology/solution)
+      AND includes at least one concrete cue showing a real connection, such as:
+      - A research objective, method, application, component, deployment, performance or evidence linked to the category
+      - Funding, programme, regulation or test explicitly tied to the category
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, in lists, or unrelated contexts
+      - The usage is a different meaning/sense than the configured category
+      - The description is generic energy/research text without a clear category link
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
+    default: |
+      Mark 'yes' only if the text explicitly mentions the configured category in the correct sense AND includes at least one
+      nearby contextual cue evidencing a real connection (example, measure, implementation, funding, regulation, target, performance).
+      Otherwise mark 'no'. Default to 'no' if uncertain or ambiguous.
+
+  AHL:
+    hansard: |
+      Mark 'yes' only if the speech explicitly mentions the configured category in the correct sense (as defined by the topic scope)
+      AND there is at least one immediate contextual cue (in this speech or the adjacent ones) showing a real connection, such as:
+      - A concrete intervention, service, technology, measurement/analytics, programme, funding, regulation, implementation or performance point
+      - A comparison, trade‑off, target, or plan explicitly tied to the category
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, in lists, rhetorical flourishes, or unrelated contexts (e.g., generic agriculture or food supply with no category link)
+      - The usage is a different meaning/sense of the word than the configured category
+      - The discussion is general health/food policy without a clear link to the category’s scope
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
+    crunchbase: |
+      Mark 'yes' only if the company text explicitly mentions the configured category in the correct sense (as defined by topic scope)
+      AND includes at least one concrete cue showing a real connection, such as:
+      - A product, service, solution, intervention, measurement/analytics, use case or customer explicitly tied to the category
+      - Evidence of application, outcomes, regulation, funding or deployment related to the category
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, in lists, or generic marketing language without a clear category link
+      - The usage is a different meaning/sense than the configured category
+      - The description is generic food/health/business text without a clear category link
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
+    gtr: |
+      Mark 'yes' only if the project text explicitly mentions the configured category in the correct sense (as defined by topic scope)
+      AND includes at least one concrete cue showing a real connection, such as:
+      - A research aim, method, intervention, measurement/analytics, dataset, outcome or application tied to the category
+      - Funding, programme or regulatory context clearly relevant to the category
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, in lists, or unrelated contexts
+      - The usage is a different meaning/sense than the configured category
+      - The description is generic health/food/research text without a clear category link
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
+    default: |
+      Mark 'yes' only if the text explicitly mentions the configured category in the correct sense AND includes at least one
+      nearby contextual cue evidencing a real connection (example, measure, implementation, funding, regulation, target, performance).
+      Otherwise mark 'no'. Default to 'no' if uncertain or ambiguous.
+
+  default:
+    default: |
+      Mark 'yes' only if the text explicitly mentions the configured category in the correct sense AND includes at least one
+      nearby contextual cue evidencing a real connection (example, measure, implementation, funding, regulation, target, performance).
+      Otherwise mark 'no'. Default to 'no' if uncertain or ambiguous.

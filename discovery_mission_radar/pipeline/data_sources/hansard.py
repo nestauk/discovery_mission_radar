@@ -11,7 +11,7 @@ import re
 import logging
 
 from .base import BaseDataSource
-from .utils import run_llm_relevance_check
+from .utils import run_llm_relevance_check, load_llm_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ class HansardDataSource(BaseDataSource[hansard.HansardGetter]):
         
         if use_llm_check:
             # Run LLM relevance check if requested with mission context
-            relevant_ids = self._run_relevance_check(speeches_df, config, cache_dir, topic_name, mission, **kwargs)
+            relevant_ids = self._run_relevance_check(speeches_df, config, cache_dir, topic_name, mission, getter=getter, **kwargs)
         else:
             # Just return all IDs (mirroring original notebook behaviour)
             relevant_ids = speeches_df['speech_id'].unique().tolist()
@@ -71,15 +71,55 @@ class HansardDataSource(BaseDataSource[hansard.HansardGetter]):
         return speeches_df
     
     def _run_relevance_check(self, speeches_df: pd.DataFrame, config: Dict, 
-                           cache_dir: Path, topic_name: str, mission: str = None, **kwargs) -> List[str]:
+                           cache_dir: Path, topic_name: str, mission: str = None, getter: hansard.HansardGetter = None, **kwargs) -> List[str]:
         """Run LLM relevance check for Hansard speeches."""
         
-        # Get mission-aware custom instructions
-        custom_instructions = self._get_mission_specific_instructions(mission or "Unknown")
+        # Build mission- and topic-aware custom instructions
+        custom_instructions = self._build_custom_instructions(mission or "Unknown", config, topic_name)
         
-        # Prepare speeches with text for LLM check
+        # Prepare speeches with text and neighbour context for LLM check
         speeches_with_text = speeches_df.copy()
-        speeches_with_text['text'] = speeches_with_text['speech'].apply(lambda x: re.sub(r"\s+", " ", str(x)))
+        speeches_with_text['speech'] = speeches_with_text['speech'].apply(lambda x: re.sub(r"\s+", " ", str(x)))
+
+        try:
+            # Build previous/next speech context from full debates
+            full_debates_df = getter.get_debates_parquet() if getter else None
+        except Exception:
+            full_debates_df = None
+
+        if full_debates_df is not None and not full_debates_df.empty:
+            # Keep original order; ensure clean text
+            ordered = full_debates_df.copy()
+            ordered['speech'] = ordered['speech'].apply(lambda x: re.sub(r"\s+", " ", str(x)))
+            ordered = ordered[['speech_id', 'speakername', 'speech']].reset_index(drop=True)
+            ordered['prev_speech'] = ordered['speech'].shift(1)
+            ordered['prev_speaker'] = ordered['speakername'].shift(1)
+            ordered['next_speech'] = ordered['speech'].shift(-1)
+            ordered['next_speaker'] = ordered['speakername'].shift(-1)
+            neighbour_cols = ['speech_id', 'prev_speech', 'prev_speaker', 'next_speech', 'next_speaker']
+            speeches_with_text = speeches_with_text.merge(ordered[neighbour_cols], on='speech_id', how='left')
+            
+            def _compose_context(row):
+                prev_block = (
+                    f"# PREVIOUS SPEECH\nSpeaker: {row['prev_speaker']}\nFull speech: {row['prev_speech']}\n"
+                    if isinstance(row.get('prev_speech'), str) and len(row.get('prev_speech')) > 0
+                    else "# PREVIOUS SPEECH\nNo previous speech available.\n"
+                )
+                cur_block = (
+                    f"# SPEECH\nSpeaker: {row['speakername']}\nFull speech: {row['speech']}\n"
+                )
+                next_block = (
+                    f"# NEXT SPEECH\nSpeaker: {row['next_speaker']}\nFull speech: {row['next_speech']}\n"
+                    if isinstance(row.get('next_speech'), str) and len(row.get('next_speech')) > 0
+                    else "# NEXT SPEECH\nNo next speech available.\n"
+                )
+                return prev_block + cur_block + next_block
+            speeches_with_text['text_with_context'] = speeches_with_text.apply(_compose_context, axis=1)
+            text_column = 'text_with_context'
+        else:
+            # Fallback to using only the current speech text
+            speeches_with_text['text'] = speeches_with_text['speech']
+            text_column = 'text'
         
         # Use shared LLM relevance check function with pipeline config for Argilla
         return run_llm_relevance_check(
@@ -91,68 +131,34 @@ class HansardDataSource(BaseDataSource[hansard.HansardGetter]):
             mission or "Unknown",
             pipeline_config=kwargs.get('pipeline_config'),
             id_column='speech_id',
-            text_column='text',
+            text_column=text_column,
             custom_instructions=custom_instructions
         )
     
     def _get_mission_specific_instructions(self, mission: str) -> str:
-        """Get custom instructions tailored to the specific mission."""
-        
-        if mission == "ASF":
-            return """
-            Mark the text as 'yes' if the parliamentary speech mentions or discusses the technology/topic in a meaningful way, including:
-            - Policy discussions about the technology or energy solutions
-            - Questions about government support, regulation, or funding for the technology
-            - Debates about implementation, deployment, or challenges related to the technology
-            - References to the technology in broader energy, climate, or sustainability discussions
-            - Discussions about targets, strategies, or plans involving the technology
-            
-            Mark as 'no' if:
-            - The technology is only mentioned in passing or as part of a long list
-            - The speech is primarily about unrelated topics
-            - The mention is purely incidental or tangential
-            - The discussion is about general energy policy without specific reference to the technology
-            - The text would be better captured by one of the other categories (comma separated) mentioned in this list:  
-            Bioenergy (biofuels), Biomass heating, Carbon capture and storage, District heating and heat networks, Energy grid, Geothermal energy, 
-            Heat pumps, Hydrogen energy, Hydrogen heating, Micro CHP, Solar thermal heating, Energy storage (batteries), Solar power, Wind power
-            """
-            
-        elif mission == "AHL":
-            return """
-            Mark the text as 'yes' if the parliamentary speech mentions or discusses the topic in a meaningful way, including:
-            - Policy discussions about food, nutrition, health, or obesity-related matters
-            - Questions about government support, regulation, or funding for health/food interventions
-            - Debates about implementation or challenges related to food systems, dietary health, or obesity prevention
-            - References to the topic in broader health, food policy, or public health discussions
-            - Discussions about health targets, strategies, or plans involving the topic
-            - Food environment, food labelling, food advertising, or food access policy discussions
-            
-            Mark as 'no' if:
-            - The topic is only mentioned in passing or as part of a long list
-            - The speech is primarily about unrelated topics (e.g., unrelated health issues, non-food policies)
-            - The mention is purely incidental or tangential
-            - The discussion is about general health policy without specific reference to the topic
-            - The text would be better captured by one of the other categories (comma separated) mentioned in this list:
-            Alternative proteins (general), Plant-based foods, Cloud kitchens, Food delivery apps, Fermentation, Food advertisement, 
-            Food tech (general), Health (general), Insects as food, Kitchen technology, Lab-grown meat, Meal kits, 
-            Personalised nutrition, Restaurants, Food retail, Supply chain, Weight management, Weight-loss drugs, 
-            Food reformulation (general), Food reformulation (sugar), Food reformulation (salt), Food reformulation (fat), Food reformulation (fiber)
-            """
-            
-        else:
-            # Generic instructions for unknown missions
-            return """
-            Mark the text as 'yes' if the parliamentary speech mentions or discusses the topic in a meaningful way, including:
-            - Policy discussions about the topic
-            - Questions about government support or regulation related to the topic
-            - Debates about implementation or challenges
-            - References to the topic in broader relevant policy discussions
-            
-            Mark as 'no' if:
-            - The topic is only mentioned in passing
-            - The speech is primarily about unrelated topics
-            - The mention is purely incidental or part of a list
-            """
+        """Get mission/source instructions from central YAML; no in-code prompts."""
+        try:
+            base_config_dir = Path(__file__).parent.parent / "config"
+            prompts = load_llm_prompts(base_config_dir)
+            key = mission if mission in prompts else "default"
+            mission_prompts = prompts.get(key, {})
+            source_key = getattr(self, 'source_name', '').lower() or 'hansard'
+            text = (
+                mission_prompts.get(source_key)
+                or mission_prompts.get("default")
+                or (prompts.get("default", {}) or {}).get("default")
+            )
+            if text:
+                return text
+            self.logger.warning(f"No LLM prompt found in YAML for mission={mission}, source={source_key}; proceeding without custom instructions")
+            return ""
+        except Exception as e:
+            self.logger.warning(f"Failed loading LLM prompts: {e}; proceeding without custom instructions")
+            return ""
+
+    def _build_custom_instructions(self, mission: str, topic_config: Dict, topic_name: str) -> str:
+        """Return only mission/source YAML prompt (no extra in-code guidance)."""
+        return self._get_mission_specific_instructions(mission)
 
 
 def _get_quarter_from_date(date: str) -> int:
