@@ -123,3 +123,18 @@ reports/
 
 # NPM
 node_modules/
+
+# Generated data and analysis outputs - Mission Radar specific
+data/
+samples_output/
+*.png
+*.html
+*.csv
+*.json
+*.jsonl
+
+# Exception: Keep configuration and schema files
+!config/**/*.csv
+!config/**/*.json
+!**/schema*.csv
+!**/requirements*.csv
