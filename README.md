@@ -174,6 +174,11 @@ output:
 - Policy discussion analysis
 - Keyword and topic-based filtering
 
+### Overton
+- Government publications
+- UK and international searches
+- Keyword search with LLM validation
+
 ## 📊 Outputs
 
 ### Generated Files

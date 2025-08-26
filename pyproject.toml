@@ -24,6 +24,10 @@ dependencies = [
     "structlog>=22.0.0",
     "vl-convert-python>=0.2.2",
     "discovery-utils>=0.1.1",
+    "datasets>=2.20.0",
+    "sentence-transformers>=3.4.1",
+    "pyarrow>=21.0.0",
+    "langfuse==2.51.3",
 ]
 
 [project.urls]

@@ -33,6 +33,8 @@ def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path
     ukri_stats, ukri_stats_quarterly, ukri_projects = _consolidate_gtr_data(topic_results, mission)
     
     hansard_stats, hansard_stats_quarterly, hansard_speeches = _consolidate_hansard_data(topic_results, mission)
+
+    overton_stats, overton_stats_quarterly = _consolidate_overton_data(topic_results, mission)
     
     # Define data to save with their corresponding filenames
     data_to_save = [
@@ -47,7 +49,9 @@ def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path
         (ukri_projects, "ukri_projects.csv"),
         (hansard_stats, "hansard_stats.csv"),
         (hansard_stats_quarterly, "hansard_stats_quarterly.csv"),
-        (hansard_speeches, "hansard_speeches.csv")
+        (hansard_speeches, "hansard_speeches.csv"),
+        (overton_stats, "overton_stats.csv"),
+        (overton_stats_quarterly, "overton_stats_quarterly.csv")
     ]
     
     # Save each non-empty dataframe
@@ -66,6 +70,7 @@ def consolidate_all_topics(topic_results: List[Dict[str, Any]], output_dir: Path
                 cb_stats, cb_stats_quarterly, cb_companies, cb_funding, cb_ipos, cb_acquisitions,
                 ukri_stats, ukri_stats_quarterly, ukri_projects,
                 hansard_stats, hansard_stats_quarterly, hansard_speeches,
+                overton_stats, overton_stats_quarterly,
                 config.google_sheets_id
             )
         except Exception as e:
@@ -217,11 +222,57 @@ def _consolidate_hansard_data(topic_results: List[Dict[str, Any]], mission: str)
         pd.concat(all_speeches, ignore_index=True) if all_speeches else pd.DataFrame()
     )
 
+def _consolidate_overton_data(topic_results: List[Dict[str, Any]], mission: str) -> tuple:
+    """Consolidate Overton data (yearly and quarterly counts) from all topics.
+    
+    Reads ts_yearly.csv and ts_quarterly.csv from per-topic overton directories (UK and International)
+    and stacks them with topic and pass labels for upload/aggregation.
+    """
+    all_yearly = []
+    all_quarterly = []
+    base_outputs = Path("outputs") / mission
+    for topic_result in topic_results:
+        topic_name = topic_result.get('topic_name')
+        if not topic_name:
+            continue
+        for label in ["overton_uk", "overton_international"]:
+            pass_name = "uk" if label.endswith("uk") else "international"
+            topic_dir = base_outputs / topic_name / label
+            yearly_fp = topic_dir / "ts_yearly.csv"
+            quarterly_fp = topic_dir / "ts_quarterly.csv"
+            try:
+                if yearly_fp.exists():
+                    dfy = pd.read_csv(yearly_fp)
+                    if not dfy.empty and set(["year", "count"]).issubset(dfy.columns):
+                        dfy["topic"] = topic_name
+                        dfy["pass"] = pass_name
+                        all_yearly.append(dfy)
+            except Exception as e:
+                logger.warning(f"Failed to read Overton yearly for {topic_name}/{pass_name}: {e}")
+            try:
+                if quarterly_fp.exists():
+                    dfq = pd.read_csv(quarterly_fp)
+                    # accept either (year,quarter,count) or (quarter,count)
+                    if not dfq.empty:
+                        if "quarter" not in dfq.columns and {"year", "quarter"}.issubset(dfq.columns):
+                            dfq["quarter"] = dfq.apply(lambda r: f"{int(r['year'])}-Q{int(r['quarter'])}", axis=1)
+                            dfq = dfq[["quarter", "count"]]
+                        if set(["quarter", "count"]).issubset(dfq.columns):
+                            dfq["topic"] = topic_name
+                            dfq["pass"] = pass_name
+                            all_quarterly.append(dfq[["quarter", "count", "topic", "pass"]])
+            except Exception as e:
+                logger.warning(f"Failed to read Overton quarterly for {topic_name}/{pass_name}: {e}")
+    yearly_out = pd.concat(all_yearly, ignore_index=True) if all_yearly else pd.DataFrame()
+    quarterly_out = pd.concat(all_quarterly, ignore_index=True) if all_quarterly else pd.DataFrame()
+    return yearly_out, quarterly_out
+
 def _upload_to_google_sheets(
     cb_stats: pd.DataFrame, cb_stats_quarterly: pd.DataFrame, cb_companies: pd.DataFrame,
     cb_funding: pd.DataFrame, cb_ipos: pd.DataFrame, cb_acquisitions: pd.DataFrame,
     ukri_stats: pd.DataFrame, ukri_stats_quarterly: pd.DataFrame, ukri_projects: pd.DataFrame,
     hansard_stats: pd.DataFrame, hansard_stats_quarterly: pd.DataFrame, hansard_speeches: pd.DataFrame,
+    overton_stats: pd.DataFrame, overton_stats_quarterly: pd.DataFrame,
     sheet_id: str
 ) -> None:
     """Upload consolidated DataFrames to Google Sheets.
@@ -251,6 +302,8 @@ def _upload_to_google_sheets(
         # TODO: bug - sheet upload error - input contains more than the maximum of 50000 characters in a single cell
         # upload manually
         #'hansard_speeches': hansard_speeches 
+        'overton_stats': overton_stats,
+        'overton_stats_quarterly': overton_stats_quarterly,
     }
     
     # Add non-empty dataframes to the dataframes dict

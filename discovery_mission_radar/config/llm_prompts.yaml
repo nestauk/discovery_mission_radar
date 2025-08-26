@@ -37,6 +37,21 @@ missions:
       - The description is generic energy/research text without a clear category link
       - Content better fits another configured category
       Default to 'no' if uncertain or ambiguous.
+    overton: |
+      Mark 'yes' only if the policy document clearly relates to the configured category in the correct sense (energy technology/solution) and contains at least one concrete cue such as:
+      - A policy, regulation, programme, target, deployment, funding, evidence, performance or implementation point linked to the category
+      - A technology, intervention, component, system, cost/benefit or pathway explicitly tied to the category
+
+      Consider the source/series/year metadata to disambiguate generic mentions:
+      - Source type should typically be government or IGO; venue should be relevant public bodies
+      - Series like Transcript/Press Release are not relevant
+      - Use snippet/highlights as match context; prefer substantive documents
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, list-like, or generic policy text without a clear link to the category
+      - The usage is a different meaning/sense than the configured category
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
     default: |
       Mark 'yes' only if the text explicitly mentions the configured category in the correct sense AND includes at least one
       nearby contextual cue evidencing a real connection (example, measure, implementation, funding, regulation, target, performance).
@@ -77,6 +92,20 @@ missions:
       - The term appears only in passing, in lists, or unrelated contexts
       - The usage is a different meaning/sense than the configured category
       - The description is generic health/food/research text without a clear category link
+      - Content better fits another configured category
+      Default to 'no' if uncertain or ambiguous.
+    overton: |
+      Mark 'yes' only if the policy document clearly relates to the configured category in the correct sense (as defined by the topic scope) and includes at least one concrete cue such as:
+      - An intervention, service, technology, programme, regulation, funding, outcome/measurement, implementation or performance point explicitly tied to the category
+
+      Consider the source/series/year metadata to disambiguate generic mentions:
+      - Source type should typically be government or IGO; venue should be relevant public bodies
+      - Series like Transcript/Press Release are not relevant
+      - Use snippet/highlights as match context; prefer substantive documents
+
+      Mark 'no' if any of the following:
+      - The term appears only in passing, list-like, or generic policy/health text without a clear link to the category
+      - The usage is a different meaning/sense than the configured category
       - Content better fits another configured category
       Default to 'no' if uncertain or ambiguous.
     default: |
