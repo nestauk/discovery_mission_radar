@@ -12,6 +12,7 @@ from .base import BaseAnalysisModule
 from .crunchbase_analysis import CrunchbaseAnalysisModule
 from .gtr_analysis import GtrAnalysisModule
 from .hansard_analysis import HansardAnalysisModule
+from .overton_analysis import OvertonAnalysisModule
 
 # Import aggregation and consolidation functions
 from .aggregation import produce_radar_charts
@@ -25,6 +26,7 @@ __all__ = [
     'CrunchbaseAnalysisModule',
     'GtrAnalysisModule', 
     'HansardAnalysisModule',
+    'OvertonAnalysisModule',
     
     # Aggregation functions
     'produce_radar_charts',

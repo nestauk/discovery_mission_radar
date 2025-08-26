@@ -4,8 +4,7 @@ Implements UK-focused boolean and semantic passes with optional targeted
 source restrictions, plus an optional international strict boolean pass.
 
 This step focuses on search logic, post-filtering, deduplication, facets,
-and a minimal `summary.json` output sufficient for smoke testing. The full
-output structure will be added in the next step.
+and summary creation. Output writing is delegated to the analysis module.
 """
 
 from __future__ import annotations
@@ -20,6 +19,8 @@ import logging
 import os
 
 import pandas as pd
+
+from discovery_mission_radar.pipeline.data_sources.utils import run_llm_relevance_check
 
 try:
     from discovery_utils.getters.overton import OvertonGetter, OvertonAPIError
@@ -64,10 +65,8 @@ class OvertonDataSource:
     - Title/abstract post-filter for boolean strategies
     - Doc-series exclusions and Hansard exclusion
     - Dedupe by Overton `id`
-    - Facets and minimal summary authoring
-    - Minimal `save_outputs` writing only a summary.json for smoke tests
-
-    The full output artefacts are added in the next step.
+    - Facets and summary authoring
+    - Output writing is handled by the analysis module, not here
     """
 
     # Fallback threshold for switching to OR-all keywords if AND-across-sets yields very few
@@ -99,7 +98,14 @@ class OvertonDataSource:
         self.mission_sources = mission_sources or {}
         self.international_enabled_for = international_enabled_for or {}
 
-    def fetch_topic(self, topic_cfg: Dict[str, Any], mission: str, window_months: int) -> OvertonResult:
+    def fetch_topic(
+        self,
+        topic_cfg: Dict[str, Any],
+        mission: str,
+        window_months: int,
+        cache_dir: Optional[Path] = None,
+        pipeline_config: Optional[Dict[str, Any]] = None,
+    ) -> OvertonResult:
         """Fetch Overton results for a topic.
 
     Args:
@@ -215,6 +221,13 @@ class OvertonDataSource:
                 uk_facets["semantic"] = {}
 
         uk_df = self._dedupe_concat(uk_frames)
+        # LLM relevance check (UK)
+        try:
+            uk_df = self._apply_llm_filter(
+                uk_df, topic_cfg, mission, cache_dir, pipeline_config, source_label="overton_uk"
+            )
+        except Exception as e:
+            logger.warning(f"Overton UK LLM relevance check skipped due to error: {e}")
         uk_summary = self._summarise_df(uk_df, tag="uk")
 
         # --- International strict (boolean only by default) ---
@@ -240,6 +253,13 @@ class OvertonDataSource:
                     part = self._exclude_series_and_hansard(part)
                     intl_frames.append(part)
             intl_df = self._dedupe_concat(intl_frames)
+            # LLM relevance check (International)
+            try:
+                intl_df = self._apply_llm_filter(
+                    intl_df, topic_cfg, mission, cache_dir, pipeline_config, source_label="overton_international"
+                )
+            except Exception as e:
+                logger.warning(f"Overton International LLM relevance check skipped due to error: {e}")
             # Cross-pass dedupe: remove any documents already included in UK pass
             try:
                 if intl_df is not None and not intl_df.empty and uk_df is not None and not uk_df.empty:
@@ -265,30 +285,126 @@ class OvertonDataSource:
             intl_summary=intl_summary,
         )
 
-    def save_outputs(self, topic_cfg: Dict[str, Any], mission: str, result: OvertonResult) -> None:
-        """Persist minimal outputs for step-1 smoke tests.
+    # ------------------------ LLM relevance filter ------------------------
+    def _apply_llm_filter(
+        self,
+        df: pd.DataFrame,
+        topic_cfg: Dict[str, Any],
+        mission: str,
+        cache_dir: Optional[Path],
+        pipeline_config: Optional[Dict[str, Any]],
+        source_label: str,
+    ) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        # Respect optional run_llm_check flag if present in pipeline config; default to True
+        try:
+            run_llm = pipeline_config.get("data_sources", {}).get("overton", {}).get("run_llm_check", True) if pipeline_config else True
+        except Exception:
+            run_llm = True
+        if not run_llm:
+            return df
 
-        This writes only `summary.json` files under the future target structure:
-        outputs/{MISSION}/{topic-slug}/overton_uk/summary.json and
-        outputs/{MISSION}/{topic-slug}/overton_international/summary.json (if present).
+        topic_name = (topic_cfg.get("search_recipe", {}) or {}).get("category_name", "topic")
+        # Compose richer LLM text: concise metadata header + best-available content + match context
+        items = df.copy()
+        if "id" not in items.columns:
+            return df
 
-    Args:
-            topic_cfg (Dict[str, Any]): Topic configuration dictionary.
-            mission (str): Mission key.
-            result (OvertonResult): Result container.
-        """
-        topic_slug = self._slugify((topic_cfg.get("search_recipe", {}) or {}).get("category_name", "topic"))
-        base = Path("outputs") / mission / topic_slug
-        uk_dir = base / "overton_uk"
-        uk_dir.mkdir(parents=True, exist_ok=True)
-        with (uk_dir / "summary.json").open("w", encoding="utf-8") as f:
-            json.dump(result.uk_summary, f, ensure_ascii=False, indent=2)
+        def _first_n(values: Any, n: int) -> str:
+            try:
+                if isinstance(values, list):
+                    return ", ".join([str(v) for v in values[:n]])
+            except Exception:
+                pass
+            return str(values) if values is not None else ""
 
-        if result.intl_df is not None and not result.intl_df.empty and result.intl_summary:
-            intl_dir = base / "overton_international"
-            intl_dir.mkdir(parents=True, exist_ok=True)
-            with (intl_dir / "summary.json").open("w", encoding="utf-8") as f:
-                json.dump(result.intl_summary, f, ensure_ascii=False, indent=2)
+        def _select_body(row: Dict[str, Any]) -> str:
+            for field in ["content", "abstract", "snippet"]:
+                val = row.get(field)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+            return ""
+
+        def _compose_text(row):
+            title = str(row.get("title", "") or "").strip()
+            venue = str(row.get("venue", "") or "").strip()
+            src_type = str(row.get("source_type", "") or "").strip()
+            src_country = str(row.get("source_country", "") or "").strip()
+            series = str(row.get("overton_policy_document_series", "") or "").strip()
+            year = str(row.get("publication_year", "") or row.get("published_on", "") or "").strip()
+            topics = _first_n(row.get("topics", []), 6)
+            classes = _first_n(row.get("classifications", []), 6)
+            url = str(row.get("overton_url", "") or "").strip()
+            url_ctx = str(row.get("overton_url_with_context", "") or "").strip()
+
+            header_lines = []
+            if title:
+                header_lines.append(f"Title: {title}")
+            meta_parts = []
+            if venue:
+                meta_parts.append(f"Venue: {venue}")
+            if src_type or src_country:
+                meta_parts.append(f"Source: {src_type} ({src_country})".strip())
+            if series:
+                meta_parts.append(f"Series: {series}")
+            if meta_parts:
+                header_lines.append(" | ".join(meta_parts))
+            info_parts = []
+            if year:
+                info_parts.append(f"Year: {year}")
+            if topics:
+                info_parts.append(f"Topics: {topics}")
+            if classes:
+                info_parts.append(f"Classifications: {classes}")
+            if info_parts:
+                header_lines.append(" | ".join(info_parts))
+            if url or url_ctx:
+                header_lines.append(f"URL: {url_ctx or url}")
+
+            body = _select_body(row)
+            # Append explicit match context if available
+            snip = str(row.get("snippet", "") or "").strip()
+            highlights = row.get("highlights", [])
+            ctx_parts = []
+            if snip:
+                ctx_parts.append(f"Snippet: {snip}")
+            if isinstance(highlights, list) and highlights:
+                ctx_parts.append("Highlights: " + " | ".join([str(h) for h in highlights[:3]]))
+
+            sections = ["\n".join(header_lines)]
+            if body:
+                sections.append(body)
+            if ctx_parts:
+                sections.append("\n".join(ctx_parts))
+            return "\n\n".join([s for s in sections if s])
+
+        items["text"] = items.apply(_compose_text, axis=1)
+        # Fallbacks if entirely empty text
+        if items["text"].fillna("").str.len().sum() == 0:
+            if "overton_url" in items.columns:
+                items["text"] = items["overton_url"].astype(str)
+
+        # Determine cache directory
+        safe_cache_dir = cache_dir or (Path("outputs") / ".cache" / mission.lower())
+        safe_cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Run LLM relevance check
+        matching_ids = run_llm_relevance_check(
+            items_df=items[["id", "text"]],
+            config=topic_cfg,
+            cache_dir=safe_cache_dir,
+            topic_name=topic_name,
+            source_name=source_label,
+            mission=mission,
+            pipeline_config=pipeline_config,
+            id_column="id",
+            text_column="text",
+            custom_instructions="",
+        )
+        if not matching_ids:
+            return df.iloc[0:0]
+        return df[df["id"].isin(matching_ids)]
 
     # ------------------------ Internals ------------------------
     def _extract_keyword_sets(self, recipe: Dict[str, Any]) -> List[List[str]]:
@@ -305,15 +421,15 @@ class OvertonDataSource:
         return [str(s).strip() for s in scopes if s and str(s).strip()]
 
     def _build_boolean_query(self, keyword_sets: List[List[str]]) -> Optional[str]:
-    groups: List[str] = []
-    for kws in keyword_sets:
-        if not kws:
-            continue
-        terms = [f'"{k}"' if " " in k else k for k in kws]
-        groups.append("( " + " OR ".join(terms) + " )")
-    if not groups:
-        return None
-    return " AND ".join(groups)
+        groups: List[str] = []
+        for kws in keyword_sets:
+            if not kws:
+                continue
+            terms = [f'"{k}"' if " " in k else k for k in kws]
+            groups.append("( " + " OR ".join(terms) + " )")
+        if not groups:
+            return None
+        return " AND ".join(groups)
 
     def _build_or_all_keywords(self, keyword_sets: List[List[str]]) -> Optional[str]:
         all_kws = [k for group in keyword_sets for k in group]
@@ -324,17 +440,17 @@ class OvertonDataSource:
 
     def _build_semantic_prompt(self, scope_statements: List[str]) -> Optional[str]:
         cleaned = [s for s in scope_statements if s]
-    if not cleaned:
-        return None
-    return " ".join(cleaned)
+        if not cleaned:
+            return None
+        return " ".join(cleaned)
 
     def _compute_published_after(self, window_months: int) -> str:
         days = int(round(window_months * 30.4167))
-    return (date.today() - timedelta(days=days)).isoformat()
+        return (date.today() - timedelta(days=days)).isoformat()
 
     def _post_filter_boolean(self, df: pd.DataFrame, keyword_sets: List[List[str]]) -> pd.DataFrame:
-    if df is None or df.empty:
-        return df
+        if df is None or df.empty:
+            return df
         # Exclude transcripts/press releases
         df = self._exclude_series_and_hansard(df)
         # Title/abstract contains at least one keyword (case-insensitive)
@@ -358,8 +474,8 @@ class OvertonDataSource:
             if has_abs:
                 mask = mask | df["abstract"].apply(_contains_kw)
             df = df[mask]
-    # Dedupe by id if present
-    if "id" in df.columns:
+        # Dedupe by id if present
+        if "id" in df.columns:
             df = df.drop_duplicates(subset=["id"])  # keep first
         return df
 
@@ -370,7 +486,7 @@ class OvertonDataSource:
             df = df[~df["overton_policy_document_series"].isin(self.DOC_SERIES_EXCLUDE)]
         if "source" in df.columns:
             df = df[df["source"] != "hansard_uk"]
-    return df
+        return df
 
     def _run_uk_boolean_pass(
         self,
@@ -486,8 +602,7 @@ class OvertonDataSource:
         t = (text or "").strip().lower()
         if not t:
             return "topic"
-        slug = re.sub(r"[^a-z0-9]+", "-", t)
-        slug = re.sub(r"-+", "-", slug).strip("-")
+        slug = re.sub(r"[^a-z0-9]+", "_", t)
+        slug = re.sub(r"_+", "_", slug).strip("_")
         return slug or "topic"
-
 

@@ -134,7 +134,7 @@ class GtrDataSource(BaseDataSource[gtr.GtrGetter]):
     def _get_mission_specific_instructions(self, mission: str) -> str:
         """Get mission/source instructions from central YAML; no in-code prompts."""
         try:
-            base_config_dir = Path(__file__).parent.parent / "config"
+            base_config_dir = Path(__file__).parent.parent.parent / "config"
             prompts = load_llm_prompts(base_config_dir)
             key = mission if mission in prompts else "default"
             mission_prompts = prompts.get(key, {})

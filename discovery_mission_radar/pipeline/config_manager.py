@@ -104,7 +104,7 @@ class PipelineConfig:
     def _validate_data_sources(self):
         """Validate data source configuration and warn about potential issues"""
         data_sources = self._config.get('data_sources', {})
-        required_sources = ['crunchbase', 'gtr', 'hansard']
+        required_sources = ['crunchbase', 'gtr', 'hansard', 'overton']
         
         for source in required_sources:
             if source not in data_sources:
@@ -122,6 +122,12 @@ class PipelineConfig:
                 logger.info(f"Crunchbase native categories configured for {self._mission}: {native_count} categories")
         else:
             logger.info(f"No Crunchbase native categories configured for mission {self._mission}")
+
+        # Validate Overton minimal config
+        overton_cfg = data_sources.get('overton', {})
+        if overton_cfg.get('enabled', False):
+            if 'window_months' not in overton_cfg:
+                logger.warning("Overton enabled but 'window_months' not configured. Defaulting to 60.")
     
     def _validate_date_ranges(self):
         """Validate date range configuration"""
@@ -197,6 +203,15 @@ class PipelineConfig:
                     'enabled': True, 
                     'run_llm_check': False,
                     'excluded_topics': {'ASF': [], 'AHL': []}
+                },
+                'overton': {
+                    'enabled': False,
+                    'window_months': 60,
+                    'core_sources': [],
+                    'mission_sources': {},
+                    'international': {
+                        'enabled_per_mission': False
+                    }
                 }
             },
             'output': {
@@ -389,6 +404,32 @@ class PipelineConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Export configuration as dictionary"""
         return self._config.copy()
+
+    # Overton helpers
+    def get_overton_window_months(self) -> int:
+        """Return Overton window in months (default 60)."""
+        try:
+            return int(self._config.get('data_sources', {}).get('overton', {}).get('window_months', 60))
+        except Exception:
+            return 60
+
+    def get_overton_core_sources(self) -> list:
+        """Return Overton core source slugs (list)."""
+        return list(self._config.get('data_sources', {}).get('overton', {}).get('core_sources', []) or [])
+
+    def get_overton_mission_sources(self) -> dict:
+        """Return mission-specific Overton sources mapping."""
+        return dict(self._config.get('data_sources', {}).get('overton', {}).get('mission_sources', {}) or {})
+
+    def get_overton_international_map(self) -> Dict[str, bool]:
+        """Return per-mission international enablement map, defaults to {}."""
+        val = self._config.get('data_sources', {}).get('overton', {}).get('international', {}).get('enabled_per_mission', {})
+        if isinstance(val, dict):
+            return {k.upper(): bool(v) for k, v in val.items()}
+        # Back-compat if it's a boolean flag in older configs: apply to all missions
+        if isinstance(val, bool):
+            return {m: val for m in self.get_available_missions()}
+        return {}
 
 # Global config functions - mission now required
 def get_pipeline_config(mission: str) -> PipelineConfig:

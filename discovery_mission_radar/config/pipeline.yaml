@@ -154,6 +154,10 @@ data_sources:
         - nice
         - nhsengland
         - foodgovuk
+    international:
+      enabled_per_mission:
+        AHL: true
+        ASF: false
 
 # Categories for cross-topic radar charts
 categories_to_show:
@@ -172,6 +176,7 @@ categories_to_show:
     - "food_retail_analytics"
     - "health_food_meal_replacement"
     - "advanced_food_production"
+    - "glp_adjacent"
 
 # Output settings  
 output:

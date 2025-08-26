@@ -9,9 +9,9 @@ import logging
 import yaml
 
 from discovery_utils.getters import crunchbase as cb_getters, gtr as gtr_getters, hansard as hansard_getters
-from discovery_mission_radar.pipeline.data_sources import CrunchbaseDataSource, GtrDataSource, HansardDataSource
+from discovery_mission_radar.pipeline.data_sources import CrunchbaseDataSource, GtrDataSource, HansardDataSource, OvertonDataSource
 from discovery_mission_radar.pipeline.analysis import (
-    CrunchbaseAnalysisModule, GtrAnalysisModule, HansardAnalysisModule
+    CrunchbaseAnalysisModule, GtrAnalysisModule, HansardAnalysisModule, OvertonAnalysisModule
 )
 from discovery_mission_radar.pipeline.analysis import consolidation, aggregation
 from discovery_mission_radar.pipeline.config_manager import get_pipeline_config
@@ -56,7 +56,8 @@ class MissionRadarRunner:
         self.analysis_modules = {
             'crunchbase': CrunchbaseAnalysisModule(self.mission),
             'gtr': GtrAnalysisModule(self.mission),
-            'hansard': HansardAnalysisModule(self.mission)
+            'hansard': HansardAnalysisModule(self.mission),
+            'overton': OvertonAnalysisModule(self.mission)
         }
         
         logger.info(f"Initialized MissionRadarRunner with mission={self.mission}, config_dir={config_dir}, output_dir={self.output_dir}")
@@ -80,6 +81,7 @@ class MissionRadarRunner:
         if self.pipeline_config.is_source_enabled('hansard'):
             logger.info("Initialising Hansard getter")
             self.getters['hansard'] = hansard_getters.HansardGetter()
+        # Overton uses discovery_utils getter internally; no global init here
         
         logger.info("All getters initialized successfully")
     
@@ -97,6 +99,17 @@ class MissionRadarRunner:
             
         if self.pipeline_config.is_source_enabled('hansard'):
             self.data_sources['hansard'] = HansardDataSource()
+        if self.pipeline_config.is_source_enabled('overton'):
+            # Prepare Overton data source with config-driven options
+            core_sources = self.pipeline_config.get_overton_core_sources()
+            mission_sources = self.pipeline_config.get_overton_mission_sources()
+            # International enablement is per-mission map
+            intl_map = self.pipeline_config.get_overton_international_map()
+            self.data_sources['overton'] = OvertonDataSource(
+                core_sources=core_sources,
+                mission_sources=mission_sources,
+                international_enabled_for=intl_map,
+            )
         
         logger.info("All data sources initialized successfully")
     
@@ -192,6 +205,48 @@ class MissionRadarRunner:
                 logger.info("Skipping Hansard data source (no config available)")
         else:
             logger.info("Skipping Hansard data source (excluded or disabled)")
+
+        # Overton data source
+        if self.pipeline_config.should_run_source_for_topic(topic_name, 'overton'):
+            if has_config:
+                logger.info("Processing Overton data source")
+                # window_months from config; default 60 handled in config manager
+                window_months = self.pipeline_config.get_overton_window_months()
+                # International enablement already embedded in data source at init for current mission
+                try:
+                    import os as _os
+                    if not _os.getenv('OVERTON_API_KEY'):
+                        logger.warning("OVERTON_API_KEY not set; skipping Overton for this run")
+                    else:
+                        result = self.data_sources['overton'].fetch_topic(
+                            topic_cfg=topic_config,
+                            mission=self.mission,
+                            window_months=window_months,
+                            cache_dir=self.cache_dir,
+                            pipeline_config=self.pipeline_config.to_dict(),
+                        )
+                        self.analysis_modules['overton'].write_outputs(
+                            topic_config,
+                            self.mission,
+                            result.uk_df,
+                            result.intl_df,
+                            result.uk_facets,
+                            result.intl_facets,
+                            result.uk_summary,
+                            result.intl_summary,
+                        )
+                        results['overton'] = {
+                            'stats': {
+                                'uk': result.uk_summary,
+                                'international': result.intl_summary,
+                            }
+                        }
+                except Exception as e:
+                    logger.warning(f"Overton processing failed for {topic_name}: {e}")
+            else:
+                logger.info("Skipping Overton data source (no config available)")
+        else:
+            logger.info("Skipping Overton data source (excluded or disabled)")
         
         if has_config:
             results['config'] = topic_config

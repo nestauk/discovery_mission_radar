@@ -11,6 +11,7 @@ from .utils import run_llm_relevance_check, run_llm_relevance_check_async
 from .crunchbase import CrunchbaseDataSource
 from .gtr import GtrDataSource
 from .hansard import HansardDataSource
+from .overton import OvertonDataSource
 
 __all__ = [
     # Base classes and utilities
@@ -22,4 +23,5 @@ __all__ = [
     'CrunchbaseDataSource',
     'GtrDataSource',
     'HansardDataSource'
+    , 'OvertonDataSource'
 ] 
