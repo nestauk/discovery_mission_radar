@@ -5,6 +5,7 @@ from metrics_utils import (
     disjoint_compute_metrics_from_export,
     combined_compute_metrics_from_export,
     print_binary_classification_metrics,
+    compute_simple_overlap_agreement,
 )
 
 if __name__ == "__main__":
@@ -12,6 +13,9 @@ if __name__ == "__main__":
     ap.add_argument("export_dir")
     ap.add_argument("--mode", choices=["strict","lenient","both"], default="both")
     args = ap.parse_args()
+
+    # Compute overlap agreement (mode-independent)
+    compute_simple_overlap_agreement(args.export_dir)
 
     if args.mode in ("strict","both"):
         y_disjoint_true, y_disjoint_pred = disjoint_compute_metrics_from_export(args.export_dir, "strict")

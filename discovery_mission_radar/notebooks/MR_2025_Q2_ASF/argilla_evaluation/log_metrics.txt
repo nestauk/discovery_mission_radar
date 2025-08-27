@@ -1,0 +1,113 @@
+
+=== Overlap Agreement (simple) ===
+Items with ≥2 labels: 19
+Unanimous: 5.3%
+Avg pairwise agreement: 0.263
+
+=== Set (DISJOINT) ===
+
+=== Metrics (STRICT) ===
+Confusion matrix [tn fp; fn tp]:
+[[5 2]
+ [5 7]]
+
+Classification report:
+              precision    recall  f1-score   support
+
+not relevant       0.50      0.71      0.59         7
+    relevant       0.78      0.58      0.67        12
+
+    accuracy                           0.63        19
+   macro avg       0.64      0.65      0.63        19
+weighted avg       0.68      0.63      0.64        19
+
+
+=== Set (OVERLAP) ===
+
+=== Metrics (STRICT) ===
+Confusion matrix [tn fp; fn tp]:
+[[3 8]
+ [5 3]]
+
+Classification report:
+              precision    recall  f1-score   support
+
+not relevant       0.38      0.27      0.32        11
+    relevant       0.27      0.38      0.32         8
+
+    accuracy                           0.32        19
+   macro avg       0.32      0.32      0.32        19
+weighted avg       0.33      0.32      0.32        19
+
+
+=== Set (COMBINED) ===
+
+=== Metrics (STRICT) ===
+Confusion matrix [tn fp; fn tp]:
+[[ 8 10]
+ [10 10]]
+
+Classification report:
+              precision    recall  f1-score   support
+
+not relevant       0.44      0.44      0.44        18
+    relevant       0.50      0.50      0.50        20
+
+    accuracy                           0.47        38
+   macro avg       0.47      0.47      0.47        38
+weighted avg       0.47      0.47      0.47        38
+
+
+=== Set (DISJOINT) ===
+
+=== Metrics (LENIENT) ===
+Confusion matrix [tn fp; fn tp]:
+[[2 0]
+ [8 9]]
+
+Classification report:
+              precision    recall  f1-score   support
+
+not relevant       0.20      1.00      0.33         2
+    relevant       1.00      0.53      0.69        17
+
+    accuracy                           0.58        19
+   macro avg       0.60      0.76      0.51        19
+weighted avg       0.92      0.58      0.65        19
+
+
+=== Set (OVERLAP) ===
+
+=== Metrics (LENIENT) ===
+Confusion matrix [tn fp; fn tp]:
+[[2 4]
+ [6 7]]
+
+Classification report:
+              precision    recall  f1-score   support
+
+not relevant       0.25      0.33      0.29         6
+    relevant       0.64      0.54      0.58        13
+
+    accuracy                           0.47        19
+   macro avg       0.44      0.44      0.43        19
+weighted avg       0.51      0.47      0.49        19
+
+
+=== Set (COMBINED) ===
+
+=== Metrics (LENIENT) ===
+Confusion matrix [tn fp; fn tp]:
+[[ 4  4]
+ [14 16]]
+
+Classification report:
+              precision    recall  f1-score   support
+
+not relevant       0.22      0.50      0.31         8
+    relevant       0.80      0.53      0.64        30
+
+    accuracy                           0.53        38
+   macro avg       0.51      0.52      0.47        38
+weighted avg       0.68      0.53      0.57        38
+

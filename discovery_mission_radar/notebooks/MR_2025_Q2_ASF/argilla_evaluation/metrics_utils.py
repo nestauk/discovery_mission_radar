@@ -175,16 +175,16 @@ def disjoint_compute_metrics_from_export(export_dir: str, mode: str = "strict"):
         mode (str): Label mapping mode, either "strict" or "lenient".
 
     Returns:
-        None
+        tuple[list[int], list[int]]: (y_true, y_pred) or ([], []) if no data
     """
     records_path = os.path.join(export_dir, "records.json")
     if not os.path.isfile(records_path):
         print(f"⚠️  No records.json at {records_path}")
-        return
+        return [], []
     records = _load_records(records_path)
     if not records:
         print("⚠️  No records found in export.")
-        return
+        return [], []
     y_true, y_pred = [], []
     for r in records:
         human = _disjoint_extract_human_label(r)
@@ -213,16 +213,16 @@ def overlap_compute_metrics_from_export(export_dir: str, mode: str = "strict"):
         mode (str): Label mapping mode, either "strict" or "lenient".
 
     Returns:
-        None
+        tuple[list[int], list[int]]: (y_true, y_pred) or ([], []) if no data
     """
     records_path = os.path.join(export_dir, "records.json")
     if not os.path.isfile(records_path):
         print(f"⚠️  No records.json at {records_path}")
-        return
+        return [], []
     records = _load_records(records_path)
     if not records:
         print("⚠️  No records found in export.")
-        return
+        return [], []
 
     y_true, y_pred = [], []
     for r in records:
@@ -237,9 +237,6 @@ def overlap_compute_metrics_from_export(export_dir: str, mode: str = "strict"):
                 continue
             y_true.append(t); y_pred.append(p)
 
-    if not y_true:
-        print("⚠️  No comparable labeled records found.")
-        return
     return y_true, y_pred
 
 def combined_compute_metrics_from_export(export_dir: str, mode: str = "strict") -> tuple[list[int], list[int]]:
@@ -249,3 +246,76 @@ def combined_compute_metrics_from_export(export_dir: str, mode: str = "strict") 
     y_true_o, y_pred_o = overlap_compute_metrics_from_export(export_dir, mode)
     y_true_d, y_pred_d = disjoint_compute_metrics_from_export(export_dir, mode)
     return (y_true_o + y_true_d), (y_pred_o + y_pred_d)
+
+
+def compute_simple_overlap_agreement(export_dir: str) -> dict:
+    """
+    Simple agreement on overlap items:
+    - pct_unanimous: share of items (with ≥2 labels) where all annotators chose the same label
+    - avg_pairwise_agreement: average within-item pairwise agreement (0..1)
+
+    Args:
+        export_dir (str): Path to directory containing records.json
+        
+    Returns:
+        dict: Agreement metrics or empty dict if no valid data
+    """
+    records_path = os.path.join(export_dir, "records.json")
+    if not os.path.isfile(records_path):
+        print(f"⚠️  No records.json at {records_path}")
+        return {}
+    
+    records = _load_records(records_path)
+    if not records:
+        print("⚠️  No records found in export.")
+        return {}
+
+    allowed = {"relevant", "borderline", "not relevant", "unclear"}
+    n_items = 0
+    unanimous = 0
+    pairwise_sum = 0.0
+
+    for r in records:
+        meta = r.get("metadata") or {}
+        if meta.get("subset") != "overlap":
+            continue
+        labels = _overlap_extract_human_label(r)  # this returns a list of labels
+        if not isinstance(labels, list) or len(labels) < 2:
+            continue
+
+        # normalize and filter
+        norm = [str(x).strip().lower() for x in labels if str(x).strip()]
+        norm = [x for x in norm if x in allowed]
+        if len(norm) < 2:
+            continue
+
+        n_items += 1
+        if len(set(norm)) == 1:
+            unanimous += 1
+
+        counts = Counter(norm)
+        n = len(norm)
+        agree_pairs = sum(c * (c - 1) // 2 for c in counts.values())
+        total_pairs = n * (n - 1) // 2
+        pairwise = (agree_pairs / total_pairs) if total_pairs else 0.0
+        pairwise_sum += pairwise
+
+    if n_items == 0:
+        print("⚠️  No overlap items with ≥2 valid labels.")
+        return {}
+
+    pct_unanimous = unanimous / n_items
+    avg_pairwise_agreement = pairwise_sum / n_items
+
+    summary = {
+        "items": n_items,
+        "pct_unanimous": round(pct_unanimous, 3),
+        "avg_pairwise_agreement": round(avg_pairwise_agreement, 3),
+    }
+
+    print("\n=== Overlap Agreement (simple) ===")
+    print(f"Items with ≥2 labels: {n_items}")
+    print(f"Unanimous: {pct_unanimous*100:.1f}%")
+    print(f"Avg pairwise agreement: {avg_pairwise_agreement:.3f}")
+
+    return summary
